@@ -1,0 +1,21 @@
+{
+	"HOST_DB":"172.24.16.131",
+	"USER_DB":"root",
+	"PASS_DB":"edpho@Idm2020",
+	"DATABASE":"idmcmd",
+	"PORT_DB":6446,
+	"HOST_DB_DRC":"172.24.16.131",
+	"USER_DB_DRC":"root",
+	"PASS_DB_DRC":"edpho@Idm2020",
+	"DATABASE_DRC":"idmcmd",
+	"PORT_DB_DRC":6446,
+	"HOST_MQTT":"172.24.16.131",
+	"USER_MQTT":"",
+	"PASS_MQTT":"",
+	"PORT_MQTT":1883,
+	"CLEAN_SESSION":true,
+	"QOS_SEND":1,
+	"QOS_RECEIVE":0,
+	"TOPIC_SUBSCRIBE":"IDM/INITSTORE/",
+	"TABLE_OPERATION":"initreport"
+}
