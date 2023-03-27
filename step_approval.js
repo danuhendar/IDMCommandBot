@@ -1227,6 +1227,7 @@ bot.on("callback_query", function onCallbackQuery(callbackQuery) {
     var chat_id_atasan = callbackQuery.from.id;
     var nik = callbackQuery.data.split("_")[1];
     var type = callbackQuery.data.split("_")[4];
+    var sub_id = callbackQuery.data.split("_")[5];
     //var chat_id_atasan_for_response = callbackQuery.data.split("_")[5];
     //console.log("chat_id_atasan_for_response : "+chat_id_atasan_for_response);
 
@@ -1235,7 +1236,7 @@ bot.on("callback_query", function onCallbackQuery(callbackQuery) {
         //const sql_query_cek_data_pemohon = "CALL GET_CEK_REQUEST_APPROVAL_REMOTE_DUPLICATE_LOGIN('"+nik+"')";
         //- cek apakah sudah di callback oleh user atau belum --//
         var message = "";
-        const sql_query_cek_response = "CALL GET_RESPONSE_APPROVAL_REMOTE_DUPLICATE_LOGIN('"+nik+"','"+type+"');";
+        const sql_query_cek_response = "CALL GET_RESPONSE_APPROVAL_REMOTE_DUPLICATE_LOGIN('"+nik+"','"+type+"','"+sub_id+"');";
         console.log(sql_query_cek_response);
         mysqlLib.executeQuery(sql_query_cek_response).then((d) => {
            console.log("ROW : "+d[0]);
@@ -1243,6 +1244,7 @@ bot.on("callback_query", function onCallbackQuery(callbackQuery) {
             var rows = d[0];
             if(rows == ''){
                 console.log('HASIL : DATA TIDAK DITEMUKAN');
+                /*
                 var sql_query_chat_id_atasan = "SELECT v.NIK,v.NAMA, "+
                                                        " (SELECT "+
                                                             "GROUP_CONCAT(k.CHAT_ID) AS CHAT_ID_ATASAN"+
@@ -1273,9 +1275,11 @@ bot.on("callback_query", function onCallbackQuery(callbackQuery) {
                                                                         " GROUP BY v.NIK"+
                                                                         ";";
                 mysqlLib.executeQuery(sql_query_chat_id_atasan).then((d) => {
+
                     const res_nik_pemohon = d[0].NIK;
                     const res_nama_pemohon = d[1].NAMA;
                     const res_chat_id_atasan_for_info = d[2].CHAT_ID_ATASAN;
+                     */
 
                     var message_send = "Respon anda sudah kami proses dan kami rekam. Terimakasih atas respon yang diberikan";
 
@@ -1290,12 +1294,14 @@ bot.on("callback_query", function onCallbackQuery(callbackQuery) {
                         var to = "IDMCommander";
                         pubAction_RemoteAccess(res_obj_command,"IZINKAN",location,chat_message,nik,to);
                         bot.sendMessage(chat_id_atasan, message_send,{parse_mode: 'HTML'});
+                        /*
                         var sp_res_chat_id_atasan = res_chat_id_atasan_for_info.split(",");
                         var response_dari_atasan = "Permohonan dari user : "+res_nik_pemohon+"-"+res_nama_pemohon+" Perihal : "+type+" Telah di response ("+callbackQuery.data.split("_")[0]+") oleh : "+chat_id_atasan+" ";
                         for(var a = 0;a<sp_res_chat_id_atasan.length;a++){
                             var m = sp_res_chat_id_atasan[a];
                             bot.sendMessage(m, response_dari_atasan,{parse_mode: 'HTML'});
                         }
+                        */
 
                     }else if(callbackQuery.data.includes("TOLAK")){
                        
@@ -1308,16 +1314,18 @@ bot.on("callback_query", function onCallbackQuery(callbackQuery) {
                         var to = "IDMCommander";
                         pubAction_RemoteAccess(res_obj_command,"TOLAK",location,chat_message,nik,to);
                         bot.sendMessage(chat_id_atasan, message_send,{parse_mode: 'HTML'});  
+                        /*
                         var sp_res_chat_id_atasan = res_chat_id_atasan_for_info.split(",");
                         var response_dari_atasan = "Permohonan dari user : "+res_nik_pemohon+"-"+res_nama_pemohon+" Perihal : "+type+" Telah di response ("+callbackQuery.data.split("_")[0]+") oleh : "+chat_id_atasan+" ";
                         for(var a = 0;a<sp_res_chat_id_atasan.length;a++){
                             var m = sp_res_chat_id_atasan[a];
                             bot.sendMessage(m, response_dari_atasan,{parse_mode: 'HTML'});
                         } 
+                        */
                     }
-
+                /*   
                 });
-
+                */
 
                 
             }else{
@@ -1527,6 +1535,7 @@ client.on('message',async function(topic, compressed){
                 const IN_TANGGAL_JAM = parseJson.TANGGAL_JAM;
                 const IN_COMMAND = parseJson.COMMAND;
                 const IN_TASK = parseJson.TASK;
+                const IN_SUB_ID = parseJson.SUB_ID;
                 //console.log("IN_COMMAND : "+IN_COMMAND);
                 var parse_command = JSON.parse(IN_COMMAND);
                 var location  = parse_command.LOCATION;
@@ -1633,11 +1642,11 @@ client.on('message',async function(topic, compressed){
                                                             {
                                                                 // //command,hasil,kode_cabang_user,chat_message,nik_user
                                                                 text: "IZINKAN",
-                                                                callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_"+type
+                                                                callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
                                                             },
                                                             {
                                                                 text: "TOLAK",
-                                                                callback_data:  'TOLAK_'+nik+"_"+location+"_"+pass+"_"+type
+                                                                callback_data:  'TOLAK_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
                                                             }
                                                         ],
 
@@ -1683,11 +1692,11 @@ client.on('message',async function(topic, compressed){
                                                         {
                                                             // //command,hasil,kode_cabang_user,chat_message,nik_user
                                                             text: "IZINKAN",
-                                                            callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_"+type
+                                                            callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
                                                         },
                                                         {
                                                             text: "TOLAK",
-                                                            callback_data: 'TOLAK_'+nik+"_"+location+"_"+pass+"_"+type
+                                                            callback_data: 'TOLAK_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
                                                         }
                                                     ],
 
@@ -1755,11 +1764,11 @@ client.on('message',async function(topic, compressed){
                                                             {
                                                                 // //command,hasil,kode_cabang_user,chat_message,nik_user
                                                                 text: "IZINKAN",
-                                                                callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_"+type
+                                                                callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
                                                             },
                                                             {
                                                                 text: "TOLAK",
-                                                                callback_data: 'TOLAK_'+nik+"_"+location+"_"+pass+"_"+type
+                                                                callback_data: 'TOLAK_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
                                                             }
                                                         ],
 
@@ -1802,11 +1811,11 @@ client.on('message',async function(topic, compressed){
                                                         {
                                                             // //command,hasil,kode_cabang_user,chat_message,nik_user
                                                             text: "IZINKAN",
-                                                            callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_"+type
+                                                            callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
                                                         },
                                                         {
                                                             text: "TOLAK",
-                                                            callback_data: 'TOLAK_'+nik+"_"+location+"_"+pass+"_"+type
+                                                            callback_data: 'TOLAK_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
                                                         }
                                                     ],
 
