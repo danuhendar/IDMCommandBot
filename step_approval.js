@@ -470,7 +470,7 @@ bot.on('message', (msg) => {
             const res_hasil_cek_nik = d[0].HASIL;
             if(res_hasil_cek_nik == '1'){
 
-                const sql_query_jabatan = "SELECT IF(a.JABATAN='ADMINISTRATOR' OR a.JABATAN LIKE 'SUPERVISOR%' OR a.JABATAN LIKE 'MANAGER%' OR a.JABATAN LIKE 'SUPPORT%','1','0') AS HASIL FROM idm_org_structure a WHERE a.NIK = '"+nik_user+"';";
+                const sql_query_jabatan = "SELECT IF(a.JABATAN='ADMINISTRATOR' OR a.JABATAN LIKE 'SUPERVISOR%' OR a.JABATAN LIKE 'MANAGER%' OR a.JABATAN LIKE 'SUPPORT%' OR a.JABATAN LIKE 'EDP%','1','0') AS HASIL FROM idm_org_structure a WHERE a.NIK = '"+nik_user+"';";
                 //console.log(sql_query_jabatan)
                 mysqlLib.executeQuery(sql_query_jabatan).then((d) => {
                      const res_hasil_jabatan = d[0].HASIL.trim();
@@ -1231,12 +1231,18 @@ bot.on("callback_query", function onCallbackQuery(callbackQuery) {
     //var chat_id_atasan_for_response = callbackQuery.data.split("_")[5];
     //console.log("chat_id_atasan_for_response : "+chat_id_atasan_for_response);
 
-    if(type == "DUPLICATE" || type == "REMOTELOGIN" || type == "IPTIDAKTERDAFTAR"){
+    if(type == "DUPLICATE" || type == "REMOTELOGIN" || type == "NOK"){
         //-- cek apakah data pemohon ada di table log --//
         //const sql_query_cek_data_pemohon = "CALL GET_CEK_REQUEST_APPROVAL_REMOTE_DUPLICATE_LOGIN('"+nik+"')";
         //- cek apakah sudah di callback oleh user atau belum --//
+        var res_type= "";
+        if(type == 'NOK'){
+            res_type = "IPTIDAKTERDAFTAR";
+        }else{
+            res_type = type;
+        }
         var message = "";
-        const sql_query_cek_response = "CALL GET_RESPONSE_APPROVAL_REMOTE_DUPLICATE_LOGIN('"+nik+"','"+type+"','"+sub_id+"');";
+        const sql_query_cek_response = "CALL GET_RESPONSE_APPROVAL_REMOTE_DUPLICATE_LOGIN('"+nik+"','"+res_type+"','"+sub_id+"');";
         console.log(sql_query_cek_response);
         mysqlLib.executeQuery(sql_query_cek_response).then((d) => {
            console.log("ROW : "+d[0]);
@@ -1289,7 +1295,7 @@ bot.on("callback_query", function onCallbackQuery(callbackQuery) {
                         var pass = callbackQuery.data.split("_")[3];
                         var chat_message = "SECURITY_LOGIN/"+location+"/RESPONSE/"+nik+"/";
 
-                        var obj_command = {"USERNAME_LOGIN":nik,"PASS":pass,"CHAT_ID_ATASAN":chat_id_atasan,"TYPE":type};
+                        var obj_command = {"USERNAME_LOGIN":nik,"PASS":pass,"CHAT_ID_ATASAN":chat_id_atasan,"TYPE":res_type};
                         var res_obj_command = JSON.stringify(obj_command);
                         var to = "IDMCommander";
                         pubAction_RemoteAccess(res_obj_command,"IZINKAN",location,chat_message,nik,to);
@@ -1309,7 +1315,7 @@ bot.on("callback_query", function onCallbackQuery(callbackQuery) {
                         var pass = callbackQuery.data.split("_")[3];
                         var chat_message = "SECURITY_LOGIN/"+location+"/RESPONSE/"+nik+"/";
                         
-                        var obj_command = {"USERNAME_LOGIN":nik,"PASS":pass,"CHAT_ID_ATASAN":chat_id_atasan,"TYPE":type};
+                        var obj_command = {"USERNAME_LOGIN":nik,"PASS":pass,"CHAT_ID_ATASAN":chat_id_atasan,"TYPE":res_type};
                         var res_obj_command = JSON.stringify(obj_command);
                         var to = "IDMCommander";
                         pubAction_RemoteAccess(res_obj_command,"TOLAK",location,chat_message,nik,to);
@@ -1530,233 +1536,163 @@ client.on('message',async function(topic, compressed){
             //-- HANDLE MESSAGE SECURITY LOGIN --//
             else if(topic.includes("SECURITY_LOGIN"))
             {
-                console.log("MESSAGE RECEIVED FROM BE TO TOPIC "+topic+" : "+decompressed);
-                //-- Kirim pesan ChatID atasan bahwasanya ada duplicate login --//
-                const IN_TANGGAL_JAM = parseJson.TANGGAL_JAM;
-                const IN_COMMAND = parseJson.COMMAND;
-                const IN_TASK = parseJson.TASK;
-                const IN_SUB_ID = parseJson.SUB_ID;
-                //console.log("IN_COMMAND : "+IN_COMMAND);
-                var parse_command = JSON.parse(IN_COMMAND);
-                var location  = parse_command.LOCATION;
-                var nik  = parse_command.NIK;
-                var nama = parse_command.NAMA;
-                var jabatan = parse_command.JABATAN;
-                var bagian = parse_command.BAGIAN;
-                var login_dari_ip = parse_command.LOGIN_DARI_IP;
-                var last_login = parse_command.LAST_LOGIN;
+                try{
 
-                var res_last_login = "";
-                if(last_login == ":"){
-                    res_last_login = "";
-                }else{
-                    var sp_last_login = last_login.split('#');
-                    res_last_login = sp_last_login[1]+"\r\n\r\n"+
-                                    "<b><i>Waktu Login Sebelumnya</i></b>"+"\r\n"+
-                                    sp_last_login[0];
-                }
-                var chat_id_atasan = parse_command.CHAT_ID_ATASAN;
-                var type = parse_command.TYPE;
-                var via = parse_command.VIA;
-                var pass = parse_command.PASS;
-                //console.log("nik : "+nik);
-                var message_send = "";
-                if(type == "DUPLICATE"){
-                    message_send = "<b>.: WARNING :.</b>\r\n\r\n"+
-                                    "<b>Terdapat duplicate login idmcommander atas : </b>\r\n\r\n"+
-                                    "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
-                                    "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
-                                    "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
-                                    "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
-                                    "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
-                                    "<b><i>Login Sebelumnya di IP</i></b>\r\n<i>"+res_last_login+"</i>\r\n\r\n\r\n"+
-                                    "<b><i>*) Mohon menghimbau kepada semua pengguna idmcommand untuk tidak share account serta menjaga privasi password account idmcommand masing-masing</i></b>";
-                                    
-                                    var kesimpulan = "";
-                                    if(chat_id_atasan.includes(",")){
-                                        var parse_chat_id_atasan = chat_id_atasan.split(",");
-                                        for(var i = 0;i<parse_chat_id_atasan.length;i++){
-                                            var res_nama_atasan = parse_chat_id_atasan[i].split("|")[1];
-                                            var res_chat_id_atasan = parse_chat_id_atasan[i].split("|")[2];
-                                            bot.sendMessage(res_chat_id_atasan, message_send,{parse_mode: 'HTML'});      
-                                            console.log("SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan);
-                                            kesimpulan = kesimpulan+""+"SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan+"\r\n";
-                                        }
+                    console.log("MESSAGE RECEIVED FROM BE TO TOPIC "+topic+" : "+decompressed);
+                    //-- Kirim pesan ChatID atasan bahwasanya ada duplicate login --//
+                    const IN_TANGGAL_JAM = parseJson.TANGGAL_JAM;
+                    const IN_COMMAND = parseJson.COMMAND;
+                    const IN_TASK = parseJson.TASK;
+                    const IN_SUB_ID = parseJson.SUB_ID;
+                    //console.log("IN_COMMAND : "+IN_COMMAND);
+                    var parse_command = JSON.parse(IN_COMMAND);
+                    var location  = parse_command.LOCATION;
+                    var nik  = parse_command.NIK;
+                    var nama = parse_command.NAMA;
+                    var jabatan = parse_command.JABATAN;
+                    var bagian = parse_command.BAGIAN;
+                    var login_dari_ip = parse_command.LOGIN_DARI_IP;
+                    var last_login = parse_command.LAST_LOGIN;
+
+                    var res_last_login = "";
+                    if(last_login == ":"){
+                        res_last_login = "";
+                    }else{
+                        var sp_last_login = last_login.split('#');
+                        res_last_login = sp_last_login[1]+"\r\n\r\n"+
+                                        "<b><i>Waktu Login Sebelumnya</i></b>"+"\r\n"+
+                                        sp_last_login[0];
+                    }
+                    var chat_id_atasan = parse_command.CHAT_ID_ATASAN;
+                    var type = parse_command.TYPE;
+                    var via = parse_command.VIA;
+                    var pass = parse_command.PASS;
+                    //console.log("nik : "+nik);
+                    var message_send = "";
+                    if(type == "DUPLICATE"){
+                        message_send = "<b>.: WARNING :.</b>\r\n\r\n"+
+                                        "<b>Terdapat duplicate login idmcommander atas : </b>\r\n\r\n"+
+                                        "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
+                                        "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
+                                        "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
+                                        "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
+                                        "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
+                                        "<b><i>Login Sebelumnya di IP</i></b>\r\n<i>"+res_last_login+"</i>\r\n\r\n\r\n"+
+                                        "<b><i>*) Mohon menghimbau kepada semua pengguna idmcommand untuk tidak share account serta menjaga privasi password account idmcommand masing-masing</i></b>";
                                         
-                                    }else{
-                                        var res_nama_atasan = chat_id_atasan[i].split("|")[1];
-                                        var res_chat_id_atasan = chat_id_atasan[i].split("|")[2];
-                                        bot.sendMessage(res_chat_id_atasan, message_send,{parse_mode: 'HTML'});
-                                        console.log("SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan);   
-                                        kesimpulan =  "SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan;
-                                    }
+                                        var kesimpulan = "";
+                                        if(chat_id_atasan.includes(",")){
+                                            var parse_chat_id_atasan = chat_id_atasan.split(",");
+                                            for(var i = 0;i<parse_chat_id_atasan.length;i++){
+                                                var res_nama_atasan = parse_chat_id_atasan[i].split("|")[1];
+                                                var res_chat_id_atasan = parse_chat_id_atasan[i].split("|")[2];
+                                                bot.sendMessage(res_chat_id_atasan, message_send,{parse_mode: 'HTML'});      
+                                                console.log("SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan);
+                                                kesimpulan = kesimpulan+""+"SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan+"\r\n";
+                                            }
+                                            
+                                        }else{
+                                            var res_nama_atasan = chat_id_atasan.split("|")[1];
+                                            var res_chat_id_atasan = chat_id_atasan.split("|")[2];
+                                            bot.sendMessage(res_chat_id_atasan, message_send,{parse_mode: 'HTML'});
+                                            console.log("SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan);   
+                                            kesimpulan =  "SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan;
+                                        }
 
-                                    var  message_send_to_administrator = "<b>.: MONITORING BACKEND :.</b>\r\n\r\n"+
-                                    "<b><i>Tanggal</i></b>\r\n<i>"+IN_TANGGAL_JAM+"</i>\r\n\r\n"+
-                                    "<b><i>Task</i></b>\r\n<i>"+IN_TASK+"</i>\r\n\r\n"+
-                                    "<b><i>Topic</i></b>\r\n<i>"+topic+"</i>\r\n\r\n"+
-                                    "<b><i>Pesan</i></b>\r\n<i>DUPLICATE LOGIN</i>\r\n\r\n\r\n"+
-                                    "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
-                                    "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
-                                    "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
-                                    "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
-                                    "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
-                                    "<b><i>Login Sebelumnya di IP</i></b>\r\n<i>"+res_last_login+"</i>\r\n\r\n\r\n"+
-                                    
-                                    "<b><i>Kesimpulan</i></b>\r\n<i>"+kesimpulan+"</i>\r\n\r\n\r\n"+
-                                    
-                                    "<b><i>*) Pesan ini disampaikan oleh Backend IDMCommand</i></b>";
+                                        var  message_send_to_administrator = "<b>.: MONITORING BACKEND :.</b>\r\n\r\n"+
+                                        "<b><i>Tanggal</i></b>\r\n<i>"+IN_TANGGAL_JAM+"</i>\r\n\r\n"+
+                                        "<b><i>Task</i></b>\r\n<i>"+IN_TASK+"</i>\r\n\r\n"+
+                                        "<b><i>Topic</i></b>\r\n<i>"+topic+"</i>\r\n\r\n"+
+                                        "<b><i>Pesan</i></b>\r\n<i>DUPLICATE LOGIN</i>\r\n\r\n\r\n"+
+                                        "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
+                                        "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
+                                        "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
+                                        "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
+                                        "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
+                                        "<b><i>Login Sebelumnya di IP</i></b>\r\n<i>"+res_last_login+"</i>\r\n\r\n\r\n"+
+                                        
+                                        "<b><i>Kesimpulan</i></b>\r\n<i>"+kesimpulan+"</i>\r\n\r\n\r\n"+
+                                        
+                                        "<b><i>*) Pesan ini disampaikan oleh Backend IDMCommand</i></b>";
 
-                                    bot.sendMessage("532860640", message_send_to_administrator,{parse_mode: 'HTML'});
-                                    console.log("SEND INFO SUKSES KE CHATID : 532860640");
+                                        bot.sendMessage("532860640", message_send_to_administrator,{parse_mode: 'HTML'});
+                                        console.log("SEND INFO SUKSES KE CHATID : 532860640");
 
-                }else if(type == "REMOTELOGIN"){
-                    message_send = "<b>.: WARNING :.</b>\r\n\r\n"+
-                                    "<b>Terdapat potensi penggunaan idmcommander melalui remote pc : </b>\r\n\r\n"+
-                                    "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
-                                    "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
-                                    "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
-                                    "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
-                                    "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
-                                    "<b><i>Software Remote</i></b>\r\n<i>"+via+"</i>\r\n\r\n"+
-                                    "<b>Apakah anda mengijinkan akses tersebut : </b>\r\n\r\n\r\n"+
-                                    
-                                    "<b><i>*) Mohon menghimbau kepada semua pengguna idmcommand untuk tidak share account serta menjaga privasi password account idmcommand masing-masing</i></b>";
+                    }else if(type == "REMOTELOGIN"){
+                        message_send = "<b>.: WARNING :.</b>\r\n\r\n"+
+                                        "<b>Terdapat potensi penggunaan idmcommander melalui remote pc : </b>\r\n\r\n"+
+                                        "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
+                                        "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
+                                        "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
+                                        "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
+                                        "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
+                                        "<b><i>Software Remote</i></b>\r\n<i>"+via+"</i>\r\n\r\n"+
+                                        "<b>Apakah anda mengijinkan akses tersebut : </b>\r\n\r\n\r\n"+
+                                        
+                                        "<b><i>*) Mohon menghimbau kepada semua pengguna idmcommand untuk tidak share account serta menjaga privasi password account idmcommand masing-masing</i></b>";
 
-                                    var kesimpulan = "";
-                                    if(chat_id_atasan.includes(",")){
-                                        var parse_chat_id_atasan = chat_id_atasan.split(",");
-                                        for(var i = 0;i<parse_chat_id_atasan.length;i++){
-                                            var res_nama_atasan = parse_chat_id_atasan[i].split("|")[1];
-                                            var res_chat_id_atasan = parse_chat_id_atasan[i].split("|")[2];
-                                            /*
-                                            bot.sendMessage(res_chat_id_atasan, message_send,{parse_mode: 'HTML'});      
-                                           
-                                            */
+                                        var kesimpulan = "";
+                                        if(chat_id_atasan.includes(",")){
+                                            var parse_chat_id_atasan = chat_id_atasan.split(",");
+                                            for(var i = 0;i<parse_chat_id_atasan.length;i++){
+                                                var res_nama_atasan = parse_chat_id_atasan[i].split("|")[1];
+                                                var res_chat_id_atasan = parse_chat_id_atasan[i].split("|")[2];
+                                                /*
+                                                bot.sendMessage(res_chat_id_atasan, message_send,{parse_mode: 'HTML'});      
+                                               
+                                                */
+                                                //var data_call_izin = {"CONTENT":"IZINKAN","NIK":nik,"LOCATION":location,"PASSWORD":pass,"TYPE":type};
+                                                //var data_call_tolak = {"CONTENT":"IZINKAN","NIK":nik,"LOCATION":location,"PASSWORD":pass,"TYPE":type};
+                                                bot.sendMessage(res_chat_id_atasan, message_send, {parse_mode: 'HTML',
+                                                    reply_markup: {
+                                                       inline_keyboard: [
+                                                            [
+                                                                {
+                                                                    // //command,hasil,kode_cabang_user,chat_message,nik_user
+                                                                    text: "IZINKAN",
+                                                                    callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
+                                                                },
+                                                                {
+                                                                    text: "TOLAK",
+                                                                    callback_data:  'TOLAK_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
+                                                                }
+                                                            ],
+
+                                                        ]
+                                                    }
+                                                });
+
+                                                console.log("SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan);
+                                                kesimpulan = kesimpulan+""+"SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan+"\r\n";
+                                            }
+
+                                            var  message_send_to_administrator = "<b>.: MONITORING BACKEND :.</b>\r\n\r\n"+
+                                            "<b><i>Tanggal</i></b>\r\n<i>"+IN_TANGGAL_JAM+"</i>\r\n\r\n"+
+                                            "<b><i>Task</i></b>\r\n<i>"+IN_TASK+"</i>\r\n\r\n"+
+                                            "<b><i>Topic</i></b>\r\n<i>"+topic+"</i>\r\n\r\n"+
+                                            "<b><i>Pesan</i></b>\r\n<i>REMOTE LOGIN</i>\r\n\r\n\r\n"+
+                                            "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
+                                            "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
+                                            "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
+                                            "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
+                                            "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
+                                            "<b><i>Software Remote</i></b>\r\n<i>"+via+"</i>\r\n\r\n"+
+                                            "<b><i>Kesimpulan</i></b>\r\n<i>"+kesimpulan+"</i>\r\n\r\n\r\n"+
+                                            
+                                            "<b><i>*) Pesan ini disampaikan oleh Backend IDMCommand</i></b>";
+
+                                            bot.sendMessage("532860640", message_send_to_administrator,{parse_mode: 'HTML'});
+                                            console.log("SEND INFO SUKSES KE CHATID : 532860640");
+                                            
+                                        }else{
+                                            
+                                            var res_nama_atasan = chat_id_atasan.split("|")[1];
+                                            var res_chat_id_atasan = chat_id_atasan.split("|")[2];
+
                                             //var data_call_izin = {"CONTENT":"IZINKAN","NIK":nik,"LOCATION":location,"PASSWORD":pass,"TYPE":type};
                                             //var data_call_tolak = {"CONTENT":"IZINKAN","NIK":nik,"LOCATION":location,"PASSWORD":pass,"TYPE":type};
-                                            bot.sendMessage(res_chat_id_atasan, message_send, {parse_mode: 'HTML',
-                                                reply_markup: {
-                                                   inline_keyboard: [
-                                                        [
-                                                            {
-                                                                // //command,hasil,kode_cabang_user,chat_message,nik_user
-                                                                text: "IZINKAN",
-                                                                callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
-                                                            },
-                                                            {
-                                                                text: "TOLAK",
-                                                                callback_data:  'TOLAK_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
-                                                            }
-                                                        ],
+                                                
 
-                                                    ]
-                                                }
-                                            });
-
-                                            console.log("SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan);
-                                            kesimpulan = kesimpulan+""+"SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan+"\r\n";
-                                        }
-
-                                        var  message_send_to_administrator = "<b>.: MONITORING BACKEND :.</b>\r\n\r\n"+
-                                        "<b><i>Tanggal</i></b>\r\n<i>"+IN_TANGGAL_JAM+"</i>\r\n\r\n"+
-                                        "<b><i>Task</i></b>\r\n<i>"+IN_TASK+"</i>\r\n\r\n"+
-                                        "<b><i>Topic</i></b>\r\n<i>"+topic+"</i>\r\n\r\n"+
-                                        "<b><i>Pesan</i></b>\r\n<i>REMOTE LOGIN</i>\r\n\r\n\r\n"+
-                                        "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
-                                        "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
-                                        "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
-                                        "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
-                                        "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
-                                        "<b><i>Software Remote</i></b>\r\n<i>"+via+"</i>\r\n\r\n"+
-                                        "<b><i>Kesimpulan</i></b>\r\n<i>"+kesimpulan+"</i>\r\n\r\n\r\n"+
-                                        
-                                        "<b><i>*) Pesan ini disampaikan oleh Backend IDMCommand</i></b>";
-
-                                        bot.sendMessage("532860640", message_send_to_administrator,{parse_mode: 'HTML'});
-                                        console.log("SEND INFO SUKSES KE CHATID : 532860640");
-                                        
-                                    }else{
-                                        
-                                        var res_nama_atasan = chat_id_atasan[i].split("|")[1];
-                                        var res_chat_id_atasan = chat_id_atasan[i].split("|")[2];
-
-                                        //var data_call_izin = {"CONTENT":"IZINKAN","NIK":nik,"LOCATION":location,"PASSWORD":pass,"TYPE":type};
-                                        //var data_call_tolak = {"CONTENT":"IZINKAN","NIK":nik,"LOCATION":location,"PASSWORD":pass,"TYPE":type};
-                                            
-
-                                        bot.sendMessage(res_chat_id_atasan, message_send, {parse_mode: 'HTML',
-                                            reply_markup: {
-                                               inline_keyboard: [
-                                                    [
-                                                        {
-                                                            // //command,hasil,kode_cabang_user,chat_message,nik_user
-                                                            text: "IZINKAN",
-                                                            callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
-                                                        },
-                                                        {
-                                                            text: "TOLAK",
-                                                            callback_data: 'TOLAK_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
-                                                        }
-                                                    ],
-
-                                                ]
-                                            }
-                                        });
-                                        
-                                        console.log("SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan);
-                                        var kesimpulan = kesimpulan+""+"SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan+"\r\n";
- 
-
-                                        var  message_send_to_administrator = "<b>.: MONITORING BACKEND :.</b>\r\n\r\n"+
-                                        "<b><i>Tanggal</i></b>\r\n<i>"+IN_TANGGAL_JAM+"</i>\r\n\r\n"+
-                                        "<b><i>Task</i></b>\r\n<i>"+IN_TASK+"</i>\r\n\r\n"+
-                                        "<b><i>Topic</i></b>\r\n<i>"+topic+"</i>\r\n\r\n"+
-                                        "<b><i>Pesan</i></b>\r\n<i>REMOTE LOGIN</i>\r\n\r\n\r\n"+
-                                        "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
-                                        "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
-                                        "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
-                                        "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
-                                        "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
-                                        "<b><i>Software Remote</i></b>\r\n<i>"+via+"</i>\r\n\r\n"+
-                                        "<b><i>Kesimpulan</i></b>\r\n<i>"+kesimpulan+"</i>\r\n\r\n\r\n"+
-                                        
-                                        "<b><i>*) Pesan ini disampaikan oleh Backend IDMCommand</i></b>";
-
-                                        bot.sendMessage("532860640", message_send_to_administrator,{parse_mode: 'HTML'});
-                                        console.log("SEND INFO SUKSES KE CHATID : 532860640");
-
-                                    }
-
-                }else if(type == "IPTIDAKTERDAFTAR"){
-                    //var data_list_via = JSON.stringify(via);
-
-                    const parseListVia = JSON.parse(via);
-                    //console.log("parseListVia : "+parseListVia.IP_SOURCE);
-                    const parseListVia_IP_SOURCE = parseListVia.IP_SOURCE;
-                    const parseListVia_IP_GATEWAY = parseListVia.IP_GATEWAY;
-                    const parseListVia_HOST = parseListVia.HOST;
-
-                    message_send = "<b>.: WARNING :.</b>\r\n\r\n"+
-                                    "<b>Terdapat potensi penggunaan idmcommander melalui ip yang tidak terdaftar pada server EDPHO : </b>\r\n\r\n"+
-                                    "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
-                                    "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
-                                    "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
-                                    "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
-                                    "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
-                                    "<b><i>Sumber IP</i></b>\r\n<i>"+parseListVia_IP_SOURCE+"</i>\r\n\r\n"+
-                                    "<b><i>IP Gateway</i></b>\r\n<i>"+parseListVia_IP_GATEWAY+"</i>\r\n\r\n"+
-                                    "<b><i>Host</i></b>\r\n<i>"+parseListVia_HOST+"</i>\r\n\r\n"+
-                                    "<b>Apakah anda mengijinkan akses tersebut : </b>\r\n\r\n\r\n"+
-                                    
-                                    "<b><i>*) Bapak Supervisor/Deputi/Manager mohon melakukan supervisi terhadap akses idmcommander dari Sumber IP tersebut</i></b>";
-
-                                    var kesimpulan = "";
-                                    if(chat_id_atasan.includes(",")){
-                                        var parse_chat_id_atasan = chat_id_atasan.split(",");
-                                        for(var i = 0;i<parse_chat_id_atasan.length;i++){
-                                            var res_nama_atasan = parse_chat_id_atasan[i].split("|")[1];
-                                            var res_chat_id_atasan = parse_chat_id_atasan[i].split("|")[2];
                                             bot.sendMessage(res_chat_id_atasan, message_send, {parse_mode: 'HTML',
                                                 reply_markup: {
                                                    inline_keyboard: [
@@ -1775,80 +1711,156 @@ client.on('message',async function(topic, compressed){
                                                     ]
                                                 }
                                             });
-
+                                            
                                             console.log("SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan);
-                                            kesimpulan = kesimpulan+""+"SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan+"\r\n";
+                                            var kesimpulan = kesimpulan+""+"SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan+"\r\n";
+     
+
+                                            var  message_send_to_administrator = "<b>.: MONITORING BACKEND :.</b>\r\n\r\n"+
+                                            "<b><i>Tanggal</i></b>\r\n<i>"+IN_TANGGAL_JAM+"</i>\r\n\r\n"+
+                                            "<b><i>Task</i></b>\r\n<i>"+IN_TASK+"</i>\r\n\r\n"+
+                                            "<b><i>Topic</i></b>\r\n<i>"+topic+"</i>\r\n\r\n"+
+                                            "<b><i>Pesan</i></b>\r\n<i>REMOTE LOGIN</i>\r\n\r\n\r\n"+
+                                            "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
+                                            "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
+                                            "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
+                                            "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
+                                            "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
+                                            "<b><i>Software Remote</i></b>\r\n<i>"+via+"</i>\r\n\r\n"+
+                                            "<b><i>Kesimpulan</i></b>\r\n<i>"+kesimpulan+"</i>\r\n\r\n\r\n"+
+                                            
+                                            "<b><i>*) Pesan ini disampaikan oleh Backend IDMCommand</i></b>";
+
+                                            bot.sendMessage("532860640", message_send_to_administrator,{parse_mode: 'HTML'});
+                                            console.log("SEND INFO SUKSES KE CHATID : 532860640");
+
                                         }
 
-                                        var  message_send_to_administrator = "<b>.: MONITORING BACKEND :.</b>\r\n\r\n"+
-                                        "<b><i>Tanggal</i></b>\r\n<i>"+IN_TANGGAL_JAM+"</i>\r\n\r\n"+
-                                        "<b><i>Task</i></b>\r\n<i>"+IN_TASK+"</i>\r\n\r\n"+
-                                        "<b><i>Topic</i></b>\r\n<i>"+topic+"</i>\r\n\r\n"+
-                                        "<b><i>Pesan</i></b>\r\n<i>IP TIDAK TERDAFTAR</i>\r\n\r\n\r\n"+
+                    }else if(type == "IPTIDAKTERDAFTAR"){
+                        //var data_list_via = JSON.stringify(via);
+
+                        const parseListVia = JSON.parse(via);
+                        //console.log("parseListVia : "+parseListVia.IP_SOURCE);
+                        const parseListVia_IP_SOURCE = parseListVia.IP_SOURCE;
+                        const parseListVia_IP_GATEWAY = parseListVia.IP_GATEWAY;
+                        const parseListVia_HOST = parseListVia.HOST;
+
+                        message_send = "<b>.: WARNING :.</b>\r\n\r\n"+
+                                        "<b>Terdapat potensi penggunaan idmcommander melalui ip yang tidak terdaftar pada server EDPHO : </b>\r\n\r\n"+
                                         "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
                                         "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
                                         "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
                                         "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
                                         "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
-                                        "<b><i>Sumber IP</i></b>\r\n<i>"+via+"</i>\r\n\r\n"+
+                                        "<b><i>Sumber IP</i></b>\r\n<i>"+parseListVia_IP_SOURCE+"</i>\r\n\r\n"+
                                         "<b><i>IP Gateway</i></b>\r\n<i>"+parseListVia_IP_GATEWAY+"</i>\r\n\r\n"+
-                                        "<b><i>Kesimpulan</i></b>\r\n<i>"+kesimpulan+"</i>\r\n\r\n\r\n"+
+                                        "<b><i>Host</i></b>\r\n<i>"+parseListVia_HOST+"</i>\r\n\r\n"+
+                                        "<b>Apakah anda mengijinkan akses tersebut : </b>\r\n\r\n\r\n"+
                                         
-                                        "<b><i>*) Pesan ini disampaikan oleh Backend IDMCommand</i></b>";
+                                        "<b><i>*) Bapak Supervisor/Deputi/Manager mohon melakukan supervisi terhadap akses idmcommander dari Sumber IP tersebut</i></b>";
 
-                                        bot.sendMessage("532860640", message_send_to_administrator,{parse_mode: 'HTML'});
-                                        console.log("SEND INFO SUKSES KE CHATID : 532860640");
-                                        
-                                    }else{
-                                        
-                                        var res_nama_atasan = chat_id_atasan[i].split("|")[1];
-                                        var res_chat_id_atasan = chat_id_atasan[i].split("|")[2];
+                                        var kesimpulan = "";
+                                        if(chat_id_atasan.includes(",")){
+                                            var parse_chat_id_atasan = chat_id_atasan.split(",");
+                                            for(var i = 0;i<parse_chat_id_atasan.length;i++){
+                                                var res_nama_atasan = parse_chat_id_atasan[i].split("|")[1];
+                                                var res_chat_id_atasan = parse_chat_id_atasan[i].split("|")[2];
+                                                //console.log("DATA CALLBACK : "+'IZINKAN_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID);
+                                                bot.sendMessage(res_chat_id_atasan, message_send, {parse_mode: 'HTML',
+                                                    reply_markup: {
+                                                       inline_keyboard: [
+                                                            [
+                                                                {
+                                                                    // //command,hasil,kode_cabang_user,chat_message,nik_user
+                                                                    text: "IZINKAN",
+                                                                    callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_NOK_"+IN_SUB_ID
+                                                                },
+                                                                {
+                                                                    text: "TOLAK",
+                                                                    callback_data: 'TOLAK_'+nik+"_"+location+"_"+pass+"_NOK_"+IN_SUB_ID
+                                                                }
+                                                            ],
 
-                                        bot.sendMessage(res_chat_id_atasan, message_send, {parse_mode: 'HTML',
-                                            reply_markup: {
-                                               inline_keyboard: [
-                                                    [
-                                                        {
-                                                            // //command,hasil,kode_cabang_user,chat_message,nik_user
-                                                            text: "IZINKAN",
-                                                            callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
-                                                        },
-                                                        {
-                                                            text: "TOLAK",
-                                                            callback_data: 'TOLAK_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
-                                                        }
-                                                    ],
+                                                        ]
+                                                    }
+                                                });
 
-                                                ]
+                                                console.log("SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan);
+                                                kesimpulan = kesimpulan+""+"SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan+"\r\n";
                                             }
-                                        });
-                                        
-                                        console.log("SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan);
-                                        var kesimpulan = kesimpulan+""+"SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan+"\r\n";
- 
 
-                                        var  message_send_to_administrator = "<b>.: MONITORING BACKEND :.</b>\r\n\r\n"+
-                                        "<b><i>Tanggal</i></b>\r\n<i>"+IN_TANGGAL_JAM+"</i>\r\n\r\n"+
-                                        "<b><i>Task</i></b>\r\n<i>"+IN_TASK+"</i>\r\n\r\n"+
-                                        "<b><i>Topic</i></b>\r\n<i>"+topic+"</i>\r\n\r\n"+
-                                        "<b><i>Pesan</i></b>\r\n<i>REMOTE LOGIN</i>\r\n\r\n\r\n"+
-                                        "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
-                                        "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
-                                        "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
-                                        "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
-                                        "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
-                                        "<b><i>Software Remote</i></b>\r\n<i>"+via+"</i>\r\n\r\n"+
-                                        "<b><i>Kesimpulan</i></b>\r\n<i>"+kesimpulan+"</i>\r\n\r\n\r\n"+
-                                        
-                                        "<b><i>*) Pesan ini disampaikan oleh Backend IDMCommand</i></b>";
+                                            var  message_send_to_administrator = "<b>.: MONITORING BACKEND :.</b>\r\n\r\n"+
+                                            "<b><i>Tanggal</i></b>\r\n<i>"+IN_TANGGAL_JAM+"</i>\r\n\r\n"+
+                                            "<b><i>Task</i></b>\r\n<i>"+IN_TASK+"</i>\r\n\r\n"+
+                                            "<b><i>Topic</i></b>\r\n<i>"+topic+"</i>\r\n\r\n"+
+                                            "<b><i>Pesan</i></b>\r\n<i>IP TIDAK TERDAFTAR</i>\r\n\r\n\r\n"+
+                                            "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
+                                            "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
+                                            "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
+                                            "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
+                                            "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
+                                            "<b><i>Sumber IP</i></b>\r\n<i>"+via+"</i>\r\n\r\n"+
+                                            "<b><i>IP Gateway</i></b>\r\n<i>"+parseListVia_IP_GATEWAY+"</i>\r\n\r\n"+
+                                            "<b><i>Kesimpulan</i></b>\r\n<i>"+kesimpulan+"</i>\r\n\r\n\r\n"+
+                                            
+                                            "<b><i>*) Pesan ini disampaikan oleh Backend IDMCommand</i></b>";
 
-                                        bot.sendMessage("532860640", message_send_to_administrator,{parse_mode: 'HTML'});
-                                        console.log("SEND INFO SUKSES KE CHATID : 532860640");
+                                            bot.sendMessage("532860640", message_send_to_administrator,{parse_mode: 'HTML'});
+                                            console.log("SEND INFO SUKSES KE CHATID : 532860640");
+                                            
+                                        }else{
+                                            
+                                            var res_nama_atasan = chat_id_atasan.split("|")[1];
+                                            var res_chat_id_atasan = chat_id_atasan.split("|")[2];
 
-                                    }
-                }else{
-                    message_send = "";
-                } 
+                                            bot.sendMessage(res_chat_id_atasan, message_send, {parse_mode: 'HTML',
+                                                reply_markup: {
+                                                   inline_keyboard: [
+                                                        [
+                                                            {
+                                                                // //command,hasil,kode_cabang_user,chat_message,nik_user
+                                                                text: "IZINKAN",
+                                                                callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_NOK_"+IN_SUB_ID
+                                                            },
+                                                            {
+                                                                text: "TOLAK",
+                                                                callback_data: 'TOLAK_'+nik+"_"+location+"_"+pass+"_NOK_"+IN_SUB_ID
+                                                            }
+                                                        ],
+
+                                                    ]
+                                                }
+                                            });
+                                            
+                                            console.log("SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan);
+                                            var kesimpulan = kesimpulan+""+"SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan+"\r\n";
+     
+
+                                            var  message_send_to_administrator = "<b>.: MONITORING BACKEND :.</b>\r\n\r\n"+
+                                            "<b><i>Tanggal</i></b>\r\n<i>"+IN_TANGGAL_JAM+"</i>\r\n\r\n"+
+                                            "<b><i>Task</i></b>\r\n<i>"+IN_TASK+"</i>\r\n\r\n"+
+                                            "<b><i>Topic</i></b>\r\n<i>"+topic+"</i>\r\n\r\n"+
+                                            "<b><i>Pesan</i></b>\r\n<i>REMOTE LOGIN</i>\r\n\r\n\r\n"+
+                                            "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
+                                            "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
+                                            "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
+                                            "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
+                                            "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
+                                            "<b><i>Software Remote</i></b>\r\n<i>"+via+"</i>\r\n\r\n"+
+                                            "<b><i>Kesimpulan</i></b>\r\n<i>"+kesimpulan+"</i>\r\n\r\n\r\n"+
+                                            
+                                            "<b><i>*) Pesan ini disampaikan oleh Backend IDMCommand</i></b>";
+
+                                            bot.sendMessage("532860640", message_send_to_administrator,{parse_mode: 'HTML'});
+                                            console.log("SEND INFO SUKSES KE CHATID : 532860640");
+
+                                        }
+                    }else{
+                        message_send = "";
+                    } 
+                } catch(ex){
+                    console.log(ex)
+                }
             }
             //-- HANDLE MESSAGE MONITORING BACKEND --//
             else if(topic.includes("MONITORING_BACKEND"))
