@@ -1213,8 +1213,92 @@ bot.on('message', (msg) => {
                 
         });
         
-    }else if(msg.text.toString().includes('backup')){
-        pub_Command_Backup();
+    }else if(msg.text.toString().includes('resetpass')){
+        const nik_target = msg.text.toString().split('_')[1];
+        //-- pengecekan jabtan --//
+        const sql_query = "SELECT LOCATION,NIK,NAMA,JABATAN FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"' ORDER BY branch_code ASC;";
+        //console.log(sql_query)
+        mysqlLib.executeQuery(sql_query).then((d) => {
+            const res_location = d[0].LOCATION.trim();
+            const res_nik = d[0].NIK;
+            const res_nama = d[0].NAMA;
+            const res_jabatan = d[0].JABATAN;
+            //-- cek jabatan yang mengaaction proses reset --//
+            //-- jika jabatan support toko maka cegah proses tersebut --//
+            if(res_jabatan.includes('SUPPORT')){
+                //console.log('kondisi 1');
+                bot.sendMessage(msg.chat.id, "Anda tidak berhak mengakses menu tersebut");
+             //-- jika user HO maka lanjutkan proses tanpa proses cek lokasi telebih dahulu --//   
+            }else if(res_jabatan == 'ADMINISTRATOR' || res_jabatan == 'REGIONAL_MANAGER' || res_jabatan == 'EDP_HO' || chatId == '532860640'  || chatId == '418772040'){
+                //console.log('kondisi 2');
+                const sql_upd_pass = "UPDATE idm_org_structure SET PASSWORD = NIK WHERE NIK = '"+nik_target+"';"
+                //console.log(sql_upd_pass);            
+                mysqlLib.executeQuery(sql_upd_pass).then((d) => {
+                    bot.sendMessage(msg.chat.id, 'Proses reset password atas NIK : '+nik_target+' Berhasil dilakukan. Terimakasih'); 
+                });
+            }else{
+                //console.log('kondisi 3');
+                //-- cek lokasi nik target dan nik yang me-reset apakah sama --//
+                //-- jika sama maka lanjutkan proses --//
+                const cek_lokasi_nik_target = "SELECT LOCATION FROM idm_org_structure WHERE NIK = '"+nik_target+"'";
+                mysqlLib.executeQuery(cek_lokasi_nik_target).then((d) => {
+                    const res_location_nik_target = d[0].LOCATION.trim();
+                    //console.log(res_location+" VS "+ res_location_nik_target);
+                    if(res_location == res_location_nik_target)
+                    {
+                        const sql_upd_pass = "UPDATE idm_org_structure SET PASSWORD = NIK WHERE NIK = '"+nik_target+"';"    
+                        mysqlLib.executeQuery(sql_upd_pass).then((d) => {
+                            bot.sendMessage(msg.chat.id, 'Proses reset password atas NIK : '+nik_target+' Berhasil dilakukan. Terimakasih'); 
+                        });    
+                    //-- jika tidak sama maka cegah proses agar user lain tidak mereset seenaknya --//
+                    }else{
+                        bot.sendMessage(msg.chat.id, 'Anda tidak di perbolehkan mereset password nik : '+nik_target+'. Lokasi anda dengan nik berbeda.'); 
+                    }
+                    
+                });
+            }
+        });
+    }else if(msg.text.toString().includes('aktivasi')){
+        const nik_target = msg.text.toString().split('_')[1];
+        //-- pengecekan jabtan --//
+        const sql_query = "SELECT LOCATION,NIK,NAMA,JABATAN FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"' ORDER BY branch_code ASC;";
+        //console.log(sql_query)
+        mysqlLib.executeQuery(sql_query).then((d) => {
+            const res_location = d[0].LOCATION.trim();
+            const res_nik = d[0].NIK;
+            const res_nama = d[0].NAMA;
+            const res_jabatan = d[0].JABATAN;
+            //-- cek jabatan yang mengaaction proses reset --//
+            //-- jika jabatan support toko maka cegah proses tersebut --//
+            if(res_jabatan.includes('SUPPORT')){
+                bot.sendMessage(msg.chat.id, "Anda tidak berhak mengakses menu tersebut");
+             //-- jika user HO maka lanjutkan proses tanpa proses cek lokasi telebih dahulu --//   
+            }else if(res_jabatan == 'ADMINISTRATOR' || res_jabatan == 'REGIONAL_MANAGER' || res_jabatan == 'EDP_HO' || chatId == '532860640'  || chatId == '418772040'){
+                const sql_upd_pass = "UPDATE idm_org_structure SET IS_AKTIF = 1 WHERE NIK = '"+nik_target+"';"
+                //console.log(sql_upd_pass);            
+                mysqlLib.executeQuery(sql_upd_pass).then((d) => {
+                    bot.sendMessage(msg.chat.id, 'Proses aktivasi user atas NIK : '+nik_target+' Berhasil dilakukan. Terimakasih'); 
+                });
+            }else{
+                //-- cek lokasi nik target dan nik yang me-reset apakah sama --//
+                //-- jika sama maka lanjutkan proses --//
+                const cek_lokasi_nik_target = "SELECT LOCATION FROM idm_org_structure WHERE NIK = '"+nik_target+"'";
+                mysqlLib.executeQuery(cek_lokasi_nik_target).then((d) => {
+                    const res_location_nik_target = d[0].LOCATION.trim();
+                    if(res_location == res_location_nik_target)
+                    {
+                        const sql_upd_pass = "UPDATE idm_org_structure SET IS_AKTIF = 1 WHERE NIK = '"+nik_target+"';"    
+                        mysqlLib.executeQuery(sql_upd_pass).then((d) => {
+                            bot.sendMessage(msg.chat.id, 'Proses aktivasi user atas NIK : '+nik_target+' Berhasil dilakukan. Terimakasih'); 
+                        });    
+                    //-- jika tidak sama maka cegah proses agar user lain tidak mereset seenaknya --//
+                    }else{
+                        bot.sendMessage(msg.chat.id, 'Anda tidak di perbolehkan melakukan aktivasi nik : '+nik_target+'. Lokasi anda dengan nik berbeda.'); 
+                    }
+                    
+                });
+            }
+        });
     }else{
         bot.sendMessage(msg.chat.id, "Pesan tidak dikenali");
     }
@@ -1865,7 +1949,7 @@ client.on('message',async function(topic, compressed){
             //-- HANDLE MESSAGE MONITORING BACKEND --//
             else if(topic.includes("MONITORING_BACKEND"))
             {
-                console.log("MESSAGE RECEIVED FROM BE TO TOPIC "+topic+" : "+decompressed);
+                //console.log("MESSAGE RECEIVED FROM BE TO TOPIC "+topic+" : "+decompressed);
                 //-- Kirim pesan ChatID atasan bahwasanya ada duplicate login --//
                 const IN_COMMAND = parseJson.COMMAND;
                 //console.log("IN_COMMAND : "+IN_COMMAND);
