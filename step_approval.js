@@ -16,7 +16,7 @@ fs.readFile('appconfig.json', (err, data) => {
 
 var client  = mqtt.connect("mqtt://172.24.16.131",{clientId:"IDMCommandBOT_Baru",clean:true,port:1883,retain:false});
 client.on("connect", function(){    
-    console.log("connected MQTT"); 
+    console.log("connected MQTT");
     subs_DCCommand('RES_OTP/IDMCommandBot');
     subs_DCCommand('NOTIFIKASI_BOT/');
     subs_DCCommand('RES_DRC/IDMCommandBot');
