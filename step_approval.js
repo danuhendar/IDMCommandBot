@@ -8,6 +8,7 @@ var service_controller = require('./controller/service_controller');
 const fs = require('fs');
 const cron = require('node-cron');
 const TelegramBot = require('node-telegram-bot-api');
+const axios = require('axios');
 
 fs.readFile('appconfig.json', (err, data) => {
     if (err) throw err;
@@ -1121,48 +1122,83 @@ bot.on('message', (msg) => {
             const tanggal = service_controller.get_tanggal_jam("3");
 
 
-            const sql_query_command_kirim = "SELECT m.KDCAB,(SELECT ALAMAT FROM idm_org_branch WHERE BRANCH_CODE = m.KDCAB) AS CABANG,m.JUMLAH AS JUMLAH_KLIEN,n.JUMLAH AS ONLINE,m.JUMLAH-n.JUMLAH AS OFFLINE FROM (SELECT KDCAB,COUNT(*) AS JUMLAH FROM tokomain WHERE STATION != 'STB' GROUP BY KDCAB ORDER BY KDCAB) m "+
-                                                " INNER JOIN "+ 
-                                                " (SELECT KDCAB,JUMLAH FROM (SELECT v.KDCAB,v.STATUS,COUNT(*) AS JUMLAH FROM (SELECT a.KDCAB,a.TOKO, "+
-                                                                                           " a.NAMA, "+
-                                                                                           " a.STATION, "+
-                                                                                           " a.IP, "+
-                                                                                           " b.VERSION, "+
-                                                                                           " b.ADDTIME AS LAST_REPORT, "+
-                                                                                           " IF(DATE_FORMAT(b.ADDTIME,'%Y-%m-%d')=CURDATE(),'ONLINE','OFFLINE') AS STATUS "+
-                                                                                           " FROM tokomain a LEFT JOIN (SELECT KDTK,IP,STATION,VERSION AS VERSION,ADDTIME AS ADDTIME FROM initreport WHERE KDCAB LIKE '%') b ON b.KDTK=a.TOKO AND a.STATION=b.STATION "+
-                                                                                           " WHERE a.KDCAB LIKE '%' AND a.STATION != 'STB' "+
-                                                                    
-                                                                                           " HAVING STATUS LIKE '%'  "+
-                                                                                           " ORDER BY a.TOKO,a.STATION ASC) v GROUP BY v.KDCAB,v.STATUS  "+
-                                                                                           " ORDER BY v.KDCAB ASC) n WHERE STATUS = 'ONLINE' AND KDCAB != '') n ON m.KDCAB=n.KDCAB ORDER BY OFFLINE DESC "+
-                                               
-         
-                                            " ;";
-            //console.log(sql_query_command_kirim)
-
+            const sql_query_command_kirim = "CALL GET_LAPORAN_INSTALLASI_LISTENER_PER_CABANGV2('%','0',0,'tokomain','18','0');";
+            //console.log('sql_query_command_kirim : '+sql_query_command_kirim)
             mysqlLib.executeQuery(sql_query_command_kirim).then((d) => {
               var message = "Berikut data status listener toko di masing-masing cabang : "+"\n"+
                             "<i>Tanggal : "+service_controller.get_tanggal_jam("4")+"</i>\n"+
-                            "----------------------------------------------------------------------\n"+
-                            "|NO|KODE|NAMA|JUMLAH|ONLINE|OFFLINE\n"+
-                            "----------------------------------------------------------------------\n"
+                            "--------------------------------\n"+
+                            "|KODE|NAMA|JUMLAH| ON |%ON| OFF |%OFF\n"+
+                            "--------------------------------\n"
                             ;
-                
-                for(var i = 0;i<d.length;i++){
-                    const NO = parseFloat(i)+1;
-                    const KDCAB = d[i].KDCAB;
-                    const CABANG = d[i].CABANG;
-                    const JUMLAH_KLIEN = d[i].JUMLAH_KLIEN;
-                    const ONLINE = d[i].ONLINE;
-                    const OFFLINE = d[i].OFFLINE;
+                            
+                var res_data = d[0];
+                //console.log(res_data);
+                for(var i = 0;i<res_data.length;i++){
+                    const KDREG = res_data[i].REGION;
+                    const KDCAB = res_data[i].KDCAB;
+                    const NAMA = res_data[i].NAMA;
+                    const JUMLAH_STATION = res_data[i].JUMLAH_STATION;
+                    const ONLINE = res_data[i].ONLINE;
+                    const PERSEN_ONLINE = res_data[i].P_ONLINE;
+                    const NOK = res_data[i].NOK;
+                    const PERSEN_NOK= res_data[i].P_NOK;
 
-                    message += "|"+NO+"|"+KDCAB+"|"+CABANG+"|<b>"+JUMLAH_KLIEN+"</b>|<b>"+ONLINE+"</b>|<b style='color: darkred;'>"+OFFLINE+"</b>\n"
+                    message += "|"+KDCAB+"|"+NAMA+"|"+JUMLAH_STATION+"|"+ONLINE+"|"+PERSEN_ONLINE+"|"+NOK+"|"+PERSEN_NOK+"\n"
+                    message += "--------------------------------"+"\n"
                                 ;
                 }
                 bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
             });
         
+       
+    }else if(msg.text.toString().includes('total_listener')){
+        const tanggal = service_controller.get_tanggal_jam("3");
+        const sql_query_command_kirim = "CALL GET_LAPORAN_INSTALLASI_LISTENER_PER_CABANGV2('%','1',0,'tokomain','18','0');";
+        //console.log('sql_query_command_kirim : '+sql_query_command_kirim)
+        mysqlLib.executeQuery(sql_query_command_kirim).then((d) => {
+          var message = "Berikut rekap listener toko di semua cabang : "+"\n"+
+                        "<i>Tanggal : "+service_controller.get_tanggal_jam("4")+"</i>\n"+
+                        "--------------------------------\n"+
+                        "|JUMLAH| ON |%ON| OFF |%OFF\n"+
+                        "--------------------------------\n"
+                        ;
+                        
+            var res_data = d[0];
+            //console.log(res_data);
+            for(var i = 0;i<res_data.length;i++){
+                
+                const JUMLAH = res_data[i].JUMLAH;
+                const ONLINE = res_data[i].ONLINE;
+                const PERSEN_ONLINE = res_data[i].P_ONLINE;
+                const NOK = res_data[i].NOK;
+                const PERSEN_NOK= res_data[i].P_NOK;
+
+                message += "|"+JUMLAH+"|"+ONLINE+"|"+PERSEN_ONLINE+"|"+NOK+"|"+PERSEN_NOK+"\n"
+                message += "--------------------------------"+"\n"
+                            ;
+            }
+            bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
+        });
+    
+   
+    }else if(msg.text.toString().includes('rigger_nok')){
+        var kode_cabang = msg.text.toString().split('_')[2];
+        axios.get('http://172.24.52.3:4646/user/TriggerListenerNOK/'+kode_cabang)
+            .then(function (response) {
+                //console.log(response.data);
+                var res_response = response.data;
+                var message = "<b>"+res_response.code+"-"+res_response.msg+"</b>";
+                bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
+            })
+            .catch(function (error) {
+                //console.log(error);
+                var message = "<b>Trigger Listener NOK Error : "+error+"</b>";
+                bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
+            })
+            .finally(function () {
+                // always executed
+            });    
        
     }else if(msg.text.toString().includes('menu_edp_toko')){
         var message = "<b>Untuk mengakses Password Menu EDP ikuti format berikut : </b>\n"+"<i>/menu_edp_toko -> /menu_edp_T001</i>";
