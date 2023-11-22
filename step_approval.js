@@ -1153,17 +1153,17 @@ bot.on('message', (msg) => {
         
        
     }else if(msg.text.toString().includes('total_listener')){
-        const tanggal = service_controller.get_tanggal_jam("3");
+        const tanggal = service_controller.get_tanggal_jam("1");
         const sql_query_command_kirim = "CALL GET_LAPORAN_INSTALLASI_LISTENER_PER_CABANGV2('%','1',0,'tokomain','18','0');";
         //console.log('sql_query_command_kirim : '+sql_query_command_kirim)
-        mysqlLib.executeQuery(sql_query_command_kirim).then((d) => {
-          var message = "Berikut rekap listener toko di semua cabang : "+"\n"+
-                        "<i>Tanggal : "+service_controller.get_tanggal_jam("4")+"</i>\n"+
-                        "--------------------------------\n"+
-                        "|JUMLAH| ON |%ON| OFF |%OFF\n"+
-                        "--------------------------------\n"
-                        ;
-                        
+
+        var message = "Berikut rekap listener toko di semua cabang : "+"\n"+
+        "<i>Tanggal : "+tanggal+"</i>\n"+
+        "--------------------------------\n"+
+        "|JUMLAH| OK |%OK|NOK|%NOK|OFF|%OFF|\n"+
+        "--------------------------------\n"
+        ;
+        mysqlLib.executeQuery(sql_query_command_kirim).then((d) => {            
             var res_data = d[0];
             //console.log(res_data);
             for(var i = 0;i<res_data.length;i++){
@@ -1173,32 +1173,97 @@ bot.on('message', (msg) => {
                 const PERSEN_ONLINE = res_data[i].P_ONLINE;
                 const NOK = res_data[i].NOK;
                 const PERSEN_NOK= res_data[i].P_NOK;
+                const OFF = res_data[i].OFF;
+                const PERSEN_OFF = res_data[i].P_OFF;
 
-                message += "|"+JUMLAH+"|"+ONLINE+"|"+PERSEN_ONLINE+"|"+NOK+"|"+PERSEN_NOK+"\n"
-                message += "--------------------------------"+"\n"
-                            ;
+                message += "|"+JUMLAH+"|"+ONLINE+"|"+PERSEN_ONLINE+"|"+NOK+"|"+PERSEN_NOK+"|"+OFF+"|"+PERSEN_OFF+"\n"
+                message += "--------------------------------\n";
             }
-            bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
+            //console.log('Task 1 Done');
+            message += "\n.: Summary IS_INDUK :.\n";
+            message += "--------------------------------\n"
+            message += "|JUMLAH| OK |%OK|NOK|%NOK|OFF|%OFF|\n";
+            message += "--------------------------------\n"
+            const sql_query_command_is_induk = "CALL GET_LAPORAN_INSTALLASI_LISTENER_PER_CABANGV2('%','1',0,'tokomain','18','1');";
+            //console.log('sql_query_command_is_induk : '+sql_query_command_is_induk)
+            mysqlLib.executeQuery(sql_query_command_is_induk).then((d) => {
+                    var res_data = d[0];
+                    for(var i = 0;i<res_data.length;i++){ 
+                        const JUMLAH_STATION = res_data[i].JUMLAH_STATION;
+                        //console.log('JUMLAH_STATION : '+JUMLAH_STATION)
+                        const JUMLAH_OK = res_data[i].JUMLAH_OK;
+                        const OK = res_data[i].OK;
+                        const JUMLAH_NOK = res_data[i].JUMLAH_NOK;
+                        const NOK = res_data[i].NOK;
+                        const JUMLAH_KONEKSI_OFF= res_data[i].JUMLAH_KONEKSI_OFF;
+                        const KONEKSI_OFF = res_data[i].KONEKSI_OFF;
+                        message += "|"+JUMLAH_STATION+"|"+JUMLAH_OK+"|"+OK+"|"+JUMLAH_NOK+"|"+NOK+"|"+JUMLAH_KONEKSI_OFF+"|"+KONEKSI_OFF+"\n";
+                    }
+                    message += "--------------------------------\n";
+                    //console.log('Task 2 Done');
+                    message += "<b><i>OK</i></b>  : LISTENER ONLINE\n";
+                    message += "<b><i>NOK</i></b> : LISTENER NOK\n";
+                    message += "<b><i>OFF</i></b> : KONEKSI TIMEOUT\n";
+                    message += "--------------------------------\n"
+                    message += "Silahkan Trigger Listener : \n";
+                    message += "/trigger_nok_REG1\n";
+                    message += "/trigger_nok_REG2\n";
+                    message += "/trigger_nok_REG3\n";
+                    message += "/trigger_nok_REG4\n";
+                    message += "--------------------------------\n"
+                    message += "<b><i>IDMCommandV2_Bot V2.1.0</i></b>\n";
+                    message += "--------------------------------\n"
+                    bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'});
+            });
         });
-    
-   
     }else if(msg.text.toString().includes('rigger_nok')){
-        var kode_cabang = msg.text.toString().split('_')[2];
-        axios.get('http://172.24.52.3:4646/user/TriggerListenerNOK/'+kode_cabang)
-            .then(function (response) {
-                //console.log(response.data);
-                var res_response = response.data;
-                var message = "<b>"+res_response.code+"-"+res_response.msg+"</b>";
+            
+            //-- pengecekan jabtan --//
+            const sql_query = "SELECT LOCATION,NIK,NAMA,JABATAN FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"' ORDER BY branch_code ASC;";
+            console.log(sql_query)
+            try{
+                mysqlLib.executeQuery(sql_query).then((d) => {
+                    //console.log('d : '+d)
+                    if(d == ''){
+                        console.log();
+                        bot.sendMessage(msg.chat.id, 'Chat ID Tidak ditemukan, daftarkan telebih dahulu chat ID anda. Terimakasih'); 
+                    }else{
+                        const res_location = d[0].LOCATION.trim();
+                        const res_nik = d[0].NIK;
+                        const res_nama = d[0].NAMA;
+                        const res_jabatan = d[0].JABATAN;
+                        //-- cek jabatan yang mengaaction proses reset --//
+                        //-- jika jabatan support toko maka cegah proses tersebut --//
+                        if(res_jabatan.includes('SUPPORT')){
+                            //console.log('kondisi 1');
+                            bot.sendMessage(msg.chat.id, "Anda tidak berhak mengakses menu tersebut");
+                        //-- jika user HO maka lanjutkan proses tanpa proses cek lokasi telebih dahulu --//   
+                        }else{
+                            var kode_cabang = msg.text.toString().split('_')[2].toUpperCase();
+                            axios.get('http://172.24.52.3:4646/user/TriggerListenerNOK/'+kode_cabang)
+                            .then(function (response) {
+                                //console.log(response.data);
+                                var res_response = response.data;
+                                var message = "<b>"+res_response.code+"-"+res_response.msg+"</b>";
+                                bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
+                            })
+                            .catch(function (error) {
+                                //console.log(error);
+                                var message = "<b>Trigger Listener NOK Error : "+error+"</b>";
+                                bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
+                            })
+                            .finally(function () {
+                                // always executed
+                            });   
+                        }
+                    }
+                });
+            }catch(exc){
+                var code = 500;
+                var message = "<b>"+code+"- Error : "+exc.toString()+"</b>";
                 bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
-            })
-            .catch(function (error) {
-                //console.log(error);
-                var message = "<b>Trigger Listener NOK Error : "+error+"</b>";
-                bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
-            })
-            .finally(function () {
-                // always executed
-            });    
+            }    
+             
        
     }else if(msg.text.toString().includes('menu_edp_toko')){
         var message = "<b>Untuk mengakses Password Menu EDP ikuti format berikut : </b>\n"+"<i>/menu_edp_toko -> /menu_edp_T001</i>";
@@ -1252,12 +1317,82 @@ bot.on('message', (msg) => {
     }else if(msg.text.toString().includes('resetpass')){
         try{
             const nik_target = msg.text.toString().split('_')[1];
-            //-- pengecekan jabtan --//
-            const sql_query = "SELECT LOCATION,NIK,NAMA,JABATAN FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"' ORDER BY branch_code ASC;";
-            console.log(sql_query)
+            //console.log('panjang : '+nik_target.toString().length)
+            if(typeof(nik_target) === 'undefined'){
+                bot.sendMessage(msg.chat.id, 'Silahkan mengetikan format pesan seperti berikut : /resetpass_NIK'); 
+            }else{
+                //-- pengecekan jabtan --//
+                const sql_query = "SELECT LOCATION,NIK,NAMA,JABATAN FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"' ORDER BY branch_code ASC;";
+                //console.log(sql_query)
+                try{
+                    mysqlLib.executeQuery(sql_query).then((d) => {
+                        //console.log('d : '+d)
+                        if(d == ''){
+                            console.log();
+                            bot.sendMessage(msg.chat.id, 'Chat ID Tidak ditemukan, daftarkan telebih dahulu chat ID anda. Terimakasih'); 
+                        }else{
+                            const res_location = d[0].LOCATION.trim();
+                            const res_nik = d[0].NIK;
+                            const res_nama = d[0].NAMA;
+                            const res_jabatan = d[0].JABATAN;
+                            //-- cek jabatan yang mengaaction proses reset --//
+                            //-- jika jabatan support toko maka cegah proses tersebut --//
+                            if(res_jabatan.includes('SUPPORT')){
+                                //console.log('kondisi 1');
+                                bot.sendMessage(msg.chat.id, "Anda tidak berhak mengakses menu tersebut");
+                            //-- jika user HO maka lanjutkan proses tanpa proses cek lokasi telebih dahulu --//   
+                            }else if(res_jabatan == 'ADMINISTRATOR' || res_jabatan == 'REGIONAL_MANAGER' || res_jabatan == 'EDP_HO' || chatId == '532860640'  || chatId == '418772040'){
+                                //console.log('kondisi 2');
+                                const sql_upd_pass = "UPDATE idm_org_structure SET PASSWORD = NIK WHERE NIK = '"+nik_target+"';"
+                                //console.log(sql_upd_pass);            
+                                mysqlLib.executeQuery(sql_upd_pass).then((d) => {
+                                    bot.sendMessage(msg.chat.id, 'Proses reset password atas NIK : '+nik_target+' Berhasil dilakukan. Terimakasih'); 
+                                });
+                            }else{
+                                //console.log('kondisi 3');
+                                //-- cek lokasi nik target dan nik yang me-reset apakah sama --//
+                                //-- jika sama maka lanjutkan proses --//
+                                const cek_lokasi_nik_target = "SELECT LOCATION FROM idm_org_structure WHERE NIK = '"+nik_target+"'";
+                                mysqlLib.executeQuery(cek_lokasi_nik_target).then((d) => {
+                                    const res_location_nik_target = d[0].LOCATION.trim();
+                                    //console.log(res_location+" VS "+ res_location_nik_target);
+                                    if(res_location == res_location_nik_target)
+                                    {
+                                        const sql_upd_pass = "UPDATE idm_org_structure SET PASSWORD = NIK WHERE NIK = '"+nik_target+"';"    
+                                        mysqlLib.executeQuery(sql_upd_pass).then((d) => {
+                                            bot.sendMessage(msg.chat.id, 'Proses reset password atas NIK : '+nik_target+' Berhasil dilakukan. Terimakasih'); 
+                                        });    
+                                    //-- jika tidak sama maka cegah proses agar user lain tidak mereset seenaknya --//
+                                    }else{
+                                        bot.sendMessage(msg.chat.id, 'Anda tidak di perbolehkan mereset password nik : '+nik_target+'. Lokasi anda dengan nik berbeda.'); 
+                                    }
+                                    
+                                });
+                            }
+                        }
+                    
+                    });
+                }catch(exc1){
+                    bot.sendMessage(msg.chat.id, 'Error : Operasi gagal, Hubungi Administrator'); 
+                }
+            }
+            
+           
+        }catch(exc){
+            console.log(exc.toString())
+            bot.sendMessage(msg.chat.id, 'Chat ID Not Found'); 
+        }
+        
+    }else if(msg.text.toString().includes('aktivasi')){
+        const nik_target = msg.text.toString().split('_')[1];
+        if(typeof(nik_target) === 'undefined'){
+            bot.sendMessage(msg.chat.id, 'Silahkan mengetikan format pesan seperti berikut : /aktivasi_NIK'); 
+        }else{
             try{
+                //-- pengecekan jabtan --//
+                const sql_query = "SELECT LOCATION,NIK,NAMA,JABATAN FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"' ORDER BY branch_code ASC;";
+                //console.log(sql_query)
                 mysqlLib.executeQuery(sql_query).then((d) => {
-                    //console.log('d : '+d)
                     if(d == ''){
                         console.log();
                         bot.sendMessage(msg.chat.id, 'Chat ID Tidak ditemukan, daftarkan telebih dahulu chat ID anda. Terimakasih'); 
@@ -1269,94 +1404,94 @@ bot.on('message', (msg) => {
                         //-- cek jabatan yang mengaaction proses reset --//
                         //-- jika jabatan support toko maka cegah proses tersebut --//
                         if(res_jabatan.includes('SUPPORT')){
-                            //console.log('kondisi 1');
                             bot.sendMessage(msg.chat.id, "Anda tidak berhak mengakses menu tersebut");
                         //-- jika user HO maka lanjutkan proses tanpa proses cek lokasi telebih dahulu --//   
-                        }else if(res_jabatan == 'ADMINISTRATOR' || res_jabatan == 'REGIONAL_MANAGER' || res_jabatan == 'EDP_HO' || chatId == '532860640'  || chatId == '418772040'){
-                            //console.log('kondisi 2');
-                            const sql_upd_pass = "UPDATE idm_org_structure SET PASSWORD = NIK WHERE NIK = '"+nik_target+"';"
-                            //console.log(sql_upd_pass);            
-                            mysqlLib.executeQuery(sql_upd_pass).then((d) => {
-                                bot.sendMessage(msg.chat.id, 'Proses reset password atas NIK : '+nik_target+' Berhasil dilakukan. Terimakasih'); 
-                            });
                         }else{
-                            //console.log('kondisi 3');
                             //-- cek lokasi nik target dan nik yang me-reset apakah sama --//
                             //-- jika sama maka lanjutkan proses --//
                             const cek_lokasi_nik_target = "SELECT LOCATION FROM idm_org_structure WHERE NIK = '"+nik_target+"'";
                             mysqlLib.executeQuery(cek_lokasi_nik_target).then((d) => {
                                 const res_location_nik_target = d[0].LOCATION.trim();
-                                //console.log(res_location+" VS "+ res_location_nik_target);
                                 if(res_location == res_location_nik_target)
                                 {
-                                    const sql_upd_pass = "UPDATE idm_org_structure SET PASSWORD = NIK WHERE NIK = '"+nik_target+"';"    
+                                    const sql_upd_pass = "UPDATE idm_org_structure SET IS_AKTIF = 1 WHERE NIK = '"+nik_target+"';"    
                                     mysqlLib.executeQuery(sql_upd_pass).then((d) => {
-                                        bot.sendMessage(msg.chat.id, 'Proses reset password atas NIK : '+nik_target+' Berhasil dilakukan. Terimakasih'); 
+                                        bot.sendMessage(msg.chat.id, 'Proses aktivasi user atas NIK : '+nik_target+' Berhasil dilakukan. Silahkan login ke sistem IDMCommand dengan Password Default (NIK). Terimakasih'); 
                                     });    
                                 //-- jika tidak sama maka cegah proses agar user lain tidak mereset seenaknya --//
                                 }else{
-                                    bot.sendMessage(msg.chat.id, 'Anda tidak di perbolehkan mereset password nik : '+nik_target+'. Lokasi anda dengan nik berbeda.'); 
+                                    bot.sendMessage(msg.chat.id, 'Anda tidak di perbolehkan melakukan aktivasi nik : '+nik_target+'. Lokasi anda dengan nik berbeda.'); 
                                 }
                                 
                             });
                         }
                     }
-                   
                 });
-            }catch(exc1){
-                console.log(exc1.toString())
+            }catch(exc){
+                bot.sendMessage(msg.chat.id, 'Error operasi gagal, Hubungi administrator'); 
             }
-           
-        }catch(exc){
-            bot.sendMessage(msg.chat.id, 'Chat ID Not Found'); 
         }
         
-    }else if(msg.text.toString().includes('aktivasi')){
-        const nik_target = msg.text.toString().split('_')[1];
-        //-- pengecekan jabtan --//
-        const sql_query = "SELECT LOCATION,NIK,NAMA,JABATAN FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"' ORDER BY branch_code ASC;";
-        //console.log(sql_query)
-        mysqlLib.executeQuery(sql_query).then((d) => {
-            if(d == ''){
-                console.log();
-                bot.sendMessage(msg.chat.id, 'Chat ID Tidak ditemukan, daftarkan telebih dahulu chat ID anda. Terimakasih'); 
-            }else{
-                const res_location = d[0].LOCATION.trim();
-                const res_nik = d[0].NIK;
-                const res_nama = d[0].NAMA;
-                const res_jabatan = d[0].JABATAN;
-                //-- cek jabatan yang mengaaction proses reset --//
-                //-- jika jabatan support toko maka cegah proses tersebut --//
-                if(res_jabatan.includes('SUPPORT')){
-                    bot.sendMessage(msg.chat.id, "Anda tidak berhak mengakses menu tersebut");
-                //-- jika user HO maka lanjutkan proses tanpa proses cek lokasi telebih dahulu --//   
-                }else if(res_jabatan == 'ADMINISTRATOR' || res_jabatan == 'REGIONAL_MANAGER' || res_jabatan == 'EDP_HO' || chatId == '532860640'  || chatId == '418772040'){
-                    const sql_upd_pass = "UPDATE idm_org_structure SET IS_AKTIF = 1 WHERE NIK = '"+nik_target+"';"
-                    //console.log(sql_upd_pass);            
-                    mysqlLib.executeQuery(sql_upd_pass).then((d) => {
-                        bot.sendMessage(msg.chat.id, 'Proses aktivasi user atas NIK : '+nik_target+' Berhasil dilakukan. Terimakasih'); 
-                    });
-                }else{
-                    //-- cek lokasi nik target dan nik yang me-reset apakah sama --//
-                    //-- jika sama maka lanjutkan proses --//
-                    const cek_lokasi_nik_target = "SELECT LOCATION FROM idm_org_structure WHERE NIK = '"+nik_target+"'";
-                    mysqlLib.executeQuery(cek_lokasi_nik_target).then((d) => {
-                        const res_location_nik_target = d[0].LOCATION.trim();
-                        if(res_location == res_location_nik_target)
-                        {
-                            const sql_upd_pass = "UPDATE idm_org_structure SET IS_AKTIF = 1 WHERE NIK = '"+nik_target+"';"    
-                            mysqlLib.executeQuery(sql_upd_pass).then((d) => {
-                                bot.sendMessage(msg.chat.id, 'Proses aktivasi user atas NIK : '+nik_target+' Berhasil dilakukan. Terimakasih'); 
-                            });    
-                        //-- jika tidak sama maka cegah proses agar user lain tidak mereset seenaknya --//
-                        }else{
-                            bot.sendMessage(msg.chat.id, 'Anda tidak di perbolehkan melakukan aktivasi nik : '+nik_target+'. Lokasi anda dengan nik berbeda.'); 
-                        }
-                        
-                    });
-                }
+    }else if(msg.text.toString().includes('kategori_listener')){
+        const in_location = msg.text.toString().split('_')[2];
+        if(typeof(nik_target) === 'undefined'){
+            bot.sendMessage(msg.chat.id, 'Format Salah'); 
+        }else{
+            try{
+                //-- pengecekan jabtan --//
+                const sql_query = "SELECT LOCATION,NIK,NAMA,JABATAN FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"' ORDER BY branch_code ASC;";
+                //console.log(sql_query)
+                mysqlLib.executeQuery(sql_query).then((d) => {
+                    if(d == ''){
+                        console.log();
+                        bot.sendMessage(msg.chat.id, 'Chat ID Tidak ditemukan, daftarkan telebih dahulu chat ID anda. Terimakasih'); 
+                    }else{
+                        const res_location = d[0].LOCATION.trim();
+                        const res_nik = d[0].NIK;
+                        const res_nama = d[0].NAMA;
+                        const res_jabatan = d[0].JABATAN;
+                        //-- cek jabatan yang mengaaction proses reset --//
+                        //-- jika jabatan support toko maka cegah proses tersebut --//
+                        const sql_query_command_kirim = "CALL GET_LAPORAN_LISTENER_SUDAH_UPDATE_OFFLINE(18,'"+in_location+"','1');";
+                        //console.log(sql_query_command_kirim)
+                        mysqlLib.executeQuery(sql_query_command_kirim).then((d) => {
+                        var message = "Berikut data listener telah diupdate namun offline "+"\n"+
+                                        "<i>Tanggal : "+service_controller.get_tanggal_jam("4")+"</i>\n"+
+                                        "--------------------------------\n"
+                                        var res_data = d[0];
+                                        //console.log(res_data);
+                                        for(var i = 0;i<res_data.length;i++){
+                                            
+                                            const LOCATION = res_data[i].LOCATION;
+                                            const KDCAB = res_data[i].KDCAB;
+                                            const KODE_STATUS = res_data[i].KODE_STATUS;
+                                            message += ""+LOCATION+"|"+KDCAB+"|"+KODE_STATUS+"|"+JUMLAH+"\n";
+                                            if(res_kdcab_counter != KDCAB){
+                                                message += "--------------------------------\n";
+                                            }else{
+                                                 
+                                            }
+                                            
+                                             
+                                            res_kdcab_counter = KDCAB;
+                                        }
+                            
+                                       
+                                        message += "--------------------------------\n"
+                                        message += "<b><i>IDMCommandV2_Bot V2.1.0</i></b>\n";
+                                        message += "--------------------------------\n"
+                                        bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'});            
+                            
+                            
+                            bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
+                        });    
+                    }
+                });
+            }catch(exc){
+                bot.sendMessage(msg.chat.id, 'Error operasi gagal, Hubungi administrator'); 
             }
-        });
+        }
+        
     }else{
         bot.sendMessage(msg.chat.id, "Pesan tidak dikenali");
     }
