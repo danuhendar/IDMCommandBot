@@ -3,17 +3,24 @@ var mqtt    = require('mqtt');
 const {gzip, ungzip} = require('node-gzip');
 var Promise = require('promise');
 var mysqlLib = require('./connection/mysql_connection');
-var clickhouseLib = require('./connection/clickhouse_connect');
+// var clickhouseLib = require('./connection/clickhouse_connect');
 var service_controller = require('./controller/service_controller');
 const fs = require('fs');
 const cron = require('node-cron');
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
+const {NodeSSH} = require('node-ssh')
+
+const ssh = new NodeSSH()
+
+
 
 fs.readFile('appconfig.json', (err, data) => {
     if (err) throw err;
     let student = JSON.parse(data);
 });
+
+
 
 var client  = mqtt.connect("mqtt://172.24.16.131",{clientId:"IDMCommandBOT_Baru",clean:true,port:1883,retain:false});
 client.on("connect", function(){    
@@ -1116,12 +1123,7 @@ bot.on('message', (msg) => {
         });
 
     }else if(msg.text.toString().includes('listener_toko')){
-    
-       
-           
             const tanggal = service_controller.get_tanggal_jam("3");
-
-
             const sql_query_command_kirim = "CALL GET_LAPORAN_INSTALLASI_LISTENER_PER_CABANGV2('%','0',0,'tokomain','18','0');";
             //console.log('sql_query_command_kirim : '+sql_query_command_kirim)
             mysqlLib.executeQuery(sql_query_command_kirim).then((d) => {
@@ -1495,7 +1497,7 @@ bot.on('message', (msg) => {
     }else if(msg.text.toString().includes('kategori_listener')){
         const in_location = msg.text.toString().split('_')[2];
         if(typeof(in_location) === 'undefined'){
-            bot.sendMessage(msg.chat.id, 'Format Salah'); 
+            bot.sendMessage(msg.chat.id, 'Ketikan format kategori_listener_KODEREGIONAL'); 
         }else{
             try{
                 //-- pengecekan jabtan --//
@@ -1513,25 +1515,21 @@ bot.on('message', (msg) => {
                         //-- cek jabatan yang mengaaction proses reset --//
                         //-- jika jabatan support toko maka cegah proses tersebut --//
                         const sql_query_command_kirim = "CALL GET_LAPORAN_LISTENER_SUDAH_UPDATE_OFFLINE(18,'"+in_location+"','1');";
-                        //console.log(sql_query_command_kirim)
+                        console.log(sql_query_command_kirim)
                         mysqlLib.executeQuery(sql_query_command_kirim).then((d) => {
                         var message = "Berikut data listener telah diupdate namun offline "+"\n"+
-                                        "<i>Tanggal : "+service_controller.get_tanggal_jam("4")+"</i>\n"+
+                                        "<i>Tanggal : "+service_controller.get_tanggal_jam("1")+"</i>\n"+
                                         "--------------------------------\n"
                                         var res_data = d[0];
                                         //console.log(res_data);
+                                        var res_kdcab_counter = "";
                                         for(var i = 0;i<res_data.length;i++){
                                             
                                             const LOCATION = res_data[i].LOCATION;
                                             const KDCAB = res_data[i].KDCAB;
                                             const KODE_STATUS = res_data[i].KODE_STATUS;
+                                            const JUMLAH = res_data[i].JUMLAH;
                                             message += ""+LOCATION+"|"+KDCAB+"|"+KODE_STATUS+"|"+JUMLAH+"\n";
-                                            if(res_kdcab_counter != KDCAB){
-                                                message += "--------------------------------\n";
-                                            }else{
-                                                 
-                                            }
-                                            res_kdcab_counter = KDCAB;
                                         }
                             
                                        
@@ -1605,6 +1603,106 @@ bot.on('message', (msg) => {
             }
         }
         
+    }else if(msg.text.toString().includes('list_services')){
+         
+            try{
+                //-- pengecekan jabtan --//
+                const sql_query = "SELECT LOCATION,NIK,NAMA,JABATAN FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"' ORDER BY branch_code ASC;";
+                //console.log(sql_query)
+                mysqlLib.executeQuery(sql_query).then((d) => {
+                    if(d == ''){
+                        console.log();
+                        bot.sendMessage(msg.chat.id, 'Chat ID Tidak ditemukan, daftarkan telebih dahulu chat ID anda. Terimakasih'); 
+                    }else{
+                        const res_location = d[0].LOCATION.trim();
+                        const res_nik = d[0].NIK;
+                        const res_nama = d[0].NAMA;
+                        const res_jabatan = d[0].JABATAN;
+                        //-- cek jabatan yang mengaaction proses reset --//
+                        //-- jika jabatan administrator ijinkan --//
+                        if(res_jabatan.includes('ADMINISTRATOR')){
+                            const sql_query_command_kirim = "SELECT ID,NAMA_SERVICE,IS_AKTIF FROM m_service WHERE IS_AKTIF = 1 ORDER BY ID ASC";
+                            console.log(sql_query_command_kirim)
+                            mysqlLib.executeQuery(sql_query_command_kirim).then((d) => {
+                            var message = "Berikut data service "+"\n"+
+                                            "<i>Tanggal : "+service_controller.get_tanggal_jam("1")+"</i>\n"+
+                                            "--------------------------------\n"
+                                            var res_data = d;
+                                            //console.log(res_data);
+                                            var res_kdcab_counter = "";
+                                            for(var i = 0;i<res_data.length;i++){
+                                                
+                                                const ID = res_data[i].ID;
+                                                const NAMA_SERVICE = res_data[i].NAMA_SERVICE;
+                                                const IS_AKTIF = res_data[i].IS_AKTIF;
+                                                message += "ID\t:\t"+ID+"\n"+
+                                                            "Service\t:\t"+NAMA_SERVICE+"\n"+
+                                                            "/restart_"+NAMA_SERVICE+"\n"+
+                                                            "/stop_"+NAMA_SERVICE+"\n"
+                                                            ;
+                                                message += "--------------------------------\n"            
+                                            }
+                                
+                                        
+                                            
+                                            message += "<b><i>IDMCommandV2_Bot V2.1.0</i></b>\n";
+                                            message += "--------------------------------\n"
+                                            bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'});            
+                                
+                                
+                                bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
+                            });  
+                        //-- jika user bukan administrator jangan ijinkan  --//   
+                        }else{
+                            bot.sendMessage(msg.chat.id, "Anda tidak berhak mengakses menu tersebut");
+                        }  
+                    }
+                });
+            }catch(exc){
+                bot.sendMessage(msg.chat.id, 'Error operasi gagal, Hubungi administrator'); 
+            }
+        
+        
+    }else if(msg.text.toString().includes('restart')){
+        const nama_service = msg.text.toString().split('_')[1];
+
+        try{
+            ssh.connect({
+                host: '172.24.52.3',
+                        username: 'root',
+                        password: 'edpho@idm',
+                        port: 22,
+                        readyTimeout: 99999
+                }).then(() => {
+                        ssh.execCommand('systemctl restart '+nama_service, { cwd: '/var/www' }).then((result) => {
+                        console.log('STDOUT: ' + result.stdout);
+                        console.log('STDERR: ' + result.stderr);
+                });
+            });
+            var message = "Sukses Restart"; 
+            bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
+        }catch(exc){
+            bot.sendMessage(msg.chat.id, 'Error operasi gagal, Hubungi administrator'); 
+        }
+    }else if(msg.text.toString().includes('stop')){
+        try{ 
+            ssh.connect({
+                host: '172.24.52.3',
+                        username: 'root',
+                        password: 'edpho@idm',
+                        port: 22,
+                        readyTimeout: 99999
+                }).then(() => {
+                        ssh.execCommand('systemctl stop '+nama_service, { cwd: '/var/www' }).then((result) => {
+                        console.log('STDOUT: ' + result.stdout);
+                        console.log('STDERR: ' + result.stderr);
+                });
+            });
+            var message = "Sukses Stop";
+            bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
+        }catch(exc){
+            bot.sendMessage(msg.chat.id, 'Error operasi gagal, Hubungi administrator'); 
+        }
     }else{
         bot.sendMessage(msg.chat.id, "Pesan tidak dikenali");
     }
