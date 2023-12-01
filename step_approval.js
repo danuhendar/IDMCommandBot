@@ -1265,6 +1265,66 @@ bot.on('message', (msg) => {
             }    
              
        
+    }else if(msg.text.toString().includes('rigger_listener')){
+            
+        //-- pengecekan jabtan --//
+        const sql_query = "SELECT LOCATION,NIK,NAMA,JABATAN FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"' ORDER BY branch_code ASC;";
+        //console.log(sql_query)
+        try{
+            mysqlLib.executeQuery(sql_query).then((d) => {
+                //console.log('d : '+d)
+                if(d == ''){
+                    console.log();
+                    bot.sendMessage(msg.chat.id, 'Chat ID Tidak ditemukan, daftarkan telebih dahulu chat ID anda. Terimakasih'); 
+                }else{
+                    const res_location = d[0].LOCATION.trim();
+                    const res_nik = d[0].NIK;
+                    const res_nama = d[0].NAMA;
+                    const res_jabatan = d[0].JABATAN;
+                    //-- cek jabatan yang mengaaction proses reset --//
+                    //-- jika jabatan support toko maka cegah proses tersebut --//
+                    if(res_jabatan.includes('SUPPORT')){
+                        //console.log('kondisi 1');
+                        bot.sendMessage(msg.chat.id, "Anda tidak berhak mengakses menu tersebut");
+                    //-- jika user HO maka lanjutkan proses tanpa proses cek lokasi telebih dahulu --//   
+                    }else{
+                        var kode_toko = msg.text.toString().split('_')[2].toUpperCase();
+                        const sql_query_get_toko = "SELECT KDCAB,TOKO,STATION,IP FROM tokomain WHERE TOKO = '"+kode_toko+"' AND STATION NOT IN('','STB') ORDER BY STATION ASC;";
+                        mysqlLib.executeQuery(sql_query_get_toko).then(async (d) => {
+                            for(var i = 0;i<d.length;i++){
+                                var res_ip = d[i].IP;
+                                var res_kdcab = d[i].KDCAB;
+                                var res_kdtk = d[i].TOKO;
+                                var res_station = d[i].STATION;
+                               
+                                axios.get('http://172.24.52.3:4646/user/TriggerListener/'+res_kdcab+'/'+res_ip)
+                                .then(function (response) {
+                                    //console.log(response.data);
+                                    var res_response = response.data;
+                                    var message = "<b>"+res_response.code+"-"+res_response.msg+"-"+res_kdtk+" > "+res_station+"</b>";
+                                    bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
+                                  
+                                })
+                                .catch(function (error) {
+                                    //console.log(error);
+                                    var message = "<b>Trigger Listener IP Error : "+error+"</b>";
+                                    bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
+                                    
+                                });
+                                await sleep(2000)
+                            }
+                               
+                        });
+                    }
+                }
+            });
+        }catch(exc){
+            var code = 500;
+            var message = "<b>"+code+"- Error : "+exc.toString()+"</b>";
+            bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
+        }    
+         
+   
     }else if(msg.text.toString().includes('menu_edp_toko')){
         var message = "<b>Untuk mengakses Password Menu EDP ikuti format berikut : </b>\n"+"<i>/menu_edp_toko -> /menu_edp_T001</i>";
         bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
@@ -1434,7 +1494,7 @@ bot.on('message', (msg) => {
         
     }else if(msg.text.toString().includes('kategori_listener')){
         const in_location = msg.text.toString().split('_')[2];
-        if(typeof(nik_target) === 'undefined'){
+        if(typeof(in_location) === 'undefined'){
             bot.sendMessage(msg.chat.id, 'Format Salah'); 
         }else{
             try{
@@ -1471,8 +1531,6 @@ bot.on('message', (msg) => {
                                             }else{
                                                  
                                             }
-                                            
-                                             
                                             res_kdcab_counter = KDCAB;
                                         }
                             
@@ -1487,6 +1545,61 @@ bot.on('message', (msg) => {
                         });    
                     }
                 });
+            }catch(exc){
+                bot.sendMessage(msg.chat.id, 'Error operasi gagal, Hubungi administrator'); 
+            }
+        }
+        
+    }else if(msg.text.toString().includes('statuslistener')){
+        const in_kode_toko = msg.text.toString().split('_')[1];
+        if(typeof(in_kode_toko) === 'undefined'){
+            bot.sendMessage(msg.chat.id, 'Ketikan format : \n/statuslistener_KODETOKO'); 
+        }else{
+            try{
+                        const sql_query_command_kirim = "CALL GET_LAPORAN_LISTENER_PER_TOKO_V3(18,'"+in_kode_toko+"')";
+                        //console.log(sql_query_command_kirim)
+                        mysqlLib.executeQuery(sql_query_command_kirim).then((d) => {
+                        var message = "Berikut data listener di toko : "+in_kode_toko+"\n"+
+                                        "<i>Tanggal : "+service_controller.get_tanggal_jam("4")+"</i>\n"+
+                                        "--------------------------------\n"
+                                        var res_data = d[0];
+                                        //console.log(res_data);
+                                        for(var i = 0;i<res_data.length;i++){
+                                            
+                                            const LOCATION = res_data[i].REGION;
+                                            const KDCAB = res_data[i].KDCAB;
+                                            const CABANG = res_data[i].CABANG;
+                                            const TOKO = res_data[i].TOKO;
+                                            const NAMA = res_data[i].NAMA;
+                                            const STATION = res_data[i].STATION;
+                                            const IP = res_data[i].IP;
+                                            const VERSION = res_data[i].VERSION;
+                                            const ADDTIME = res_data[i].ADDTIME;
+                                            const KODE_STATUS = res_data[i].KODE_STATUS;
+                                            message += "Location\t:\t"+LOCATION+"\n"+
+                                                        "Kode Cabang\t:\t"+KDCAB+"\n"+
+                                                        "Nama Cabang\t:\t"+CABANG+"\n"+
+                                                        "Kode Toko\t:\t"+TOKO+"\n"+
+                                                        "Nama Toko\t:\t"+NAMA+"\n"+
+                                                        "Station\t:\t"+STATION+"\n"+
+                                                        "IP\t:\t"+IP+"\n"+
+                                                        "Versi Listener\t:\t"+VERSION+"\n"+
+                                                        "Last Report\t:\t"+ADDTIME+"\n"+
+                                                        "Status\t:\t<b>"+KODE_STATUS+"</b>\n";
+                                            message += "--------------------------------\n";
+                                        }
+                            
+                                       
+                                        message += "Trigger disini\t:\t\n /trigger_listener_"+in_kode_toko.toUpperCase()    +"\n";
+                                        message += "<b><i>IDMCommandV2_Bot V2.1.0</i></b>\n";
+                                        message += "--------------------------------\n"
+                                        bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'});            
+                            
+                            
+                            bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'}); 
+                        });    
+                     
+            
             }catch(exc){
                 bot.sendMessage(msg.chat.id, 'Error operasi gagal, Hubungi administrator'); 
             }
