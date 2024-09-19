@@ -3,7 +3,6 @@ var mqtt    = require('mqtt');
 const {gzip, ungzip} = require('node-gzip');
 var Promise = require('promise');
 var mysqlLib = require('./connection/mysql_connection');
-// var clickhouseLib = require('./connection/clickhouse_connect');
 var service_controller = require('./controller/service_controller');
 const fs = require('fs');
 const cron = require('node-cron');
@@ -44,7 +43,7 @@ const token = '5408760134:AAEC_nJp9KClpr7ewlQSwrqBPh9J2HVrkjc';
 const bot = new TelegramBot(token, {polling: true});
 bot.onText(/\/start/, (msg) => {
     try{    
-            const sql_query = "SELECT EXISTS(SELECT LOCATION FROM idm_org_structure WHERE CHAT_ID = '"+msg.chat.id+"') AS HASIL;";
+            const sql_query = "SELECT EXISTS(SELECT LOCATION FROM idmcmd2.ws_personil WHERE ChatIDTelegram = '"+msg.chat.id+"') AS HASIL;";
             //console.log(sql_query)
             mysqlLib.executeQuery(sql_query).then((d) => {
                   const res_hasil = d[0].HASIL;
@@ -77,13 +76,14 @@ bot.on('message', (msg) => {
 
     if(msg.text.toString().includes('list_broadcast')){
         //-- pengecekan jabtan --//
-        const sql_query = "SELECT LOCATION,NIK,NAMA,JABATAN FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"' ORDER BY branch_code ASC;";
-        //console.log(sql_query)
+        const sql_query = "SELECT BRANCH AS LOCATION,NIK,NAMA,JABATAN,LOKASI FROM idmcmd2.ws_personil WHERE ChatIDTelegram = '"+chatId+"';";
+        console.log(sql_query)
         mysqlLib.executeQuery(sql_query).then((d) => {
             const res_hasil = d[0].LOCATION.trim();
             const res_nik = d[0].NIK;
             const res_nama = d[0].NAMA;
             const res_jabatan = d[0].JABATAN;
+            const res_lokasi_personil = d[0].LOKASI;
             //-- pengecekan list pengajuan broadcast --//
             if(res_jabatan == 'REGIONAL_MANAGER'){
                 const sql_query_list_bc = "SELECT COUNT(CREATE_DATE) AS JUMLAH FROM broadcast_pengajuan_new WHERE IS_APPROVAL = '0' AND STEP_APPROVAL = '"+res_jabatan+"' AND DATE(CREATE_DATE) = CURDATE() AND OTP = '';"
@@ -117,14 +117,31 @@ bot.on('message', (msg) => {
 
                 });
             }else{
-                const sql_query_list_bc = "SELECT COUNT(CREATE_DATE) AS JUMLAH FROM broadcast_pengajuan_new WHERE IS_APPROVAL = '0' AND STEP_APPROVAL = '"+res_jabatan+"' AND DATE(CREATE_DATE) = CURDATE() AND KDCAB = (SELECT LOCATION FROM idm_org_structure WHERE CHAT_ID = '"+msg.chat.id+"' ORDER BY NIK ASC LIMIT 0,1) AND OTP = '';"
-                //console.log(sql_query_list_bc);
+                var res_KODE_CABANG = '';
+                var res_repl_JABATAN = '';
+                if(res_lokasi_personil == 'CABANG'){
+                    res_KODE_CABANG = res_hasil
+                    res_repl_JABATAN = res_jabatan+''
+                }else if(res_lokasi_personil == 'REGIONAL'){
+                    res_KODE_CABANG = res_hasil.split('RE0').join('REG');
+                    res_repl_JABATAN = res_jabatan
+                }
+                const sql_query_list_bc = "SELECT COUNT(CREATE_DATE) AS JUMLAH "+
+                                            " FROM idmcmd.broadcast_pengajuan_new "+
+                                            " WHERE IS_APPROVAL = '0' "+
+                                            " AND STEP_APPROVAL = '"+res_repl_JABATAN+"' "+
+                                            " AND DATE(CREATE_DATE) = CURDATE() "+
+                                            " AND KDCAB = '"+res_KODE_CABANG+"'" +
+                                            " AND OTP = '';"
+                //const sql_query_list_bc = "SELECT COUNT(CREATE_DATE) AS JUMLAH FROM broadcast_pengajuan_new WHERE IS_APPROVAL = '0' AND STEP_APPROVAL = '"+res_jabatan+"' AND DATE(CREATE_DATE) = CURDATE() AND KDCAB = (SELECT BRANCH AS LOCATION FROM idmcmd2.ws_personil WHERE ChatIDTelegram = '"+msg.chat.id+"' ORDER BY NIK ASC LIMIT 0,1) AND OTP = '';"
+                console.log(sql_query_list_bc);
                 mysqlLib.executeQuery(sql_query_list_bc).then((d) =>     {
                 const res_hasil_list_bc = parseFloat(d[0].JUMLAH);
                 
                 if(res_hasil_list_bc > 0){
                            //-- proses list broadcast command --//
-                           const sql_query_bc_command = "SELECT CONCAT('/CMD','_',KDCAB,'_',SUB_ID,'_',REPLACE(NAMA,' ','')) AS ID FROM broadcast_pengajuan_new WHERE IS_APPROVAL = '0' AND DATE(CREATE_DATE) = CURDATE() AND STEP_APPROVAL = '"+res_jabatan+"' AND KDCAB = (SELECT LOCATION FROM idm_org_structure WHERE CHAT_ID = '"+msg.chat.id+"' ORDER BY NIK ASC LIMIT 0,1) AND OTP = '';"
+                           const sql_query_bc_command = "SELECT CONCAT('/CMD','_',KDCAB,'_',SUB_ID,'_',REPLACE(NAMA,' ','')) AS ID FROM broadcast_pengajuan_new WHERE IS_APPROVAL = '0' AND DATE(CREATE_DATE) = CURDATE() AND STEP_APPROVAL = '"+res_repl_JABATAN+"' AND KDCAB = '"+res_KODE_CABANG+"' AND OTP = '';"
+                           console.log(sql_query_bc_command)
                            mysqlLib.executeQuery(sql_query_bc_command).then((d) => {
                               //const list_bc_command = "";
                              var data = ""; 
@@ -163,7 +180,8 @@ bot.on('message', (msg) => {
         try{
             //-- pengecekan apakah data broadcast pengajuan sudah terapproval atau belum --//
             const sql_query_cek_data_pengajuan = "SELECT EXISTS(SELECT CREATE_DATE FROM broadcast_pengajuan_new WHERE IS_APPROVAL = '0' AND SUB_ID = '"+sub_id+"' AND KDCAB = '"+kdcab+"' AND REPLACE(NAMA,' ','') = '"+nama+"' ) AS HASIL_CEK_DATA"
-            //console.log(sql_query_cek_data_pengajuan)
+            console.log(sql_query_cek_data_pengajuan)
+             
             mysqlLib.executeQuery(sql_query_cek_data_pengajuan).then((d) => {
                   //-- jika belum ter-approval maka lakukan proses generate OTP --//  
                   const hasil_cek_data = parseFloat(d[0].HASIL_CEK_DATA);
@@ -171,32 +189,48 @@ bot.on('message', (msg) => {
                         //-- cek otorisasi OTP --//
                         //== IFNULL((SELECT IF(JABATAN='SUPPORT','SUPERVISOR',IF(JABATAN='SUPERVISOR','MANAGER','HO')) FROM `pattern_command` WHERE JUMLAH_KLIEN <= a.JUMLAH_CLIENT ORDER BY JUMLAH_KLIEN DESC LIMIT 0,1),'-') AS OTORISASI
                         // SELECT a.CREATE_DATE,a.KDCAB,a.JUMLAH_CLIENT,a.COMMAND_KIRIM,a.NIK,a.NAMA,a.JABATAN,a.TIPE,a.TOPIC_BC,(CASE a.IS_APPROVAL WHEN '0' THEN 'Pengajuan' WHEN '1' THEN 'OK' WHEN '2' THEN 'NOK' ELSE '' END) AS IS_APPROVAL,a.KETERANGAN,IFNULL((SELECT IF(JABATAN='SUPPORT','SUPERVISOR',IF(JABATAN='SUPERVISOR','MANAGER','HO')) FROM `pattern_command` WHERE JUMLAH_KLIEN <= a.JUMLAH_CLIENT ORDER BY JUMLAH_KLIEN DESC LIMIT 0,1),'-') AS OTORISASI,NIK_PEMBERI_OTP,NAMA_PEMBERI_OTP,DATE_FORMAT(CREATE_OTP,'%Y-%m-%d %H:%i:%s') AS CREATE_OTP  FROM broadcast_pengajuan a  WHERE IS_APPROVAL = '0' AND SUB_ID = '"+sub_id+"' AND KDCAB = '"+kdcab+"' AND REPLACE(NAMA,' ','') = '"+nama+"'  ORDER BY a.CREATE_DATE DESC LIMIT 0,100
-                        const sql_cek_otorisasi = "SELECT SPLIT_STRING(a.JABATAN,'_',1) AS JABATAN,"+
-                                                                " a.STEP_APPROVAL,"+
-                                                                " IF(a.JABATAN='REGIONAL_MANAGER' OR a.JABATAN='EDP_HO',"+
-                                                                    " 'MANAGER_EDPHO',"+
-                                                                    " IF(LEFT(a.KDCAB,1)='G',"+
-                                                                        " IF(a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'SUPERVISOR_CABANG' AND TIPE_BC = a.TIPE_BC),'SUPERVISOR_CABANG','MANAGER_CABANG')"+
-                                                                    " ,"+
-                                                                        " IF(a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'SUPERVISOR_REGION' AND TIPE_BC = a.TIPE_BC),'SUPERVISOR_REGION',"+
-                                                                            " IF(a.PROSENTASE_CLIENT>(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'SUPERVISOR_REGION' AND TIPE_BC = a.TIPE_BC) AND a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'DEPUTI_MANAGER_REGION' AND TIPE_BC = a.TIPE_BC),'DEPUTI_MANAGER_REGION',"+
-                                                                                " IF(FLOOR(a.PROSENTASE_CLIENT)>(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'DEPUTI_MANAGER_REGION' AND TIPE_BC = a.TIPE_BC) AND FLOOR(a.PROSENTASE_CLIENT)<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'MANAGER_REGION' AND TIPE_BC = a.TIPE_BC),'MANAGER_REGION',"+
-                                                                                    " IF(a.PROSENTASE_CLIENT>(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'MANAGER_REGION' AND TIPE_BC = a.TIPE_BC) AND a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'REGIONAL_MANAGER' AND TIPE_BC = a.TIPE_BC),'MANAGER_EDPHO','MANAGER_EDPHO')"+
-                                                                                " )"+
-                                                                            " )"+
-                                                                        " )"+
-                                                                    " ) "+
+                        // const sql_cek_otorisasi = "SELECT SPLIT_STRING(a.JABATAN,'_',1) AS JABATAN,"+
+                        //                                         " a.STEP_APPROVAL,"+
+                        //                                         " IF(a.JABATAN='REGIONAL_MANAGER' OR a.JABATAN='EDP_HO',"+
+                        //                                             " 'MANAGER_EDPHO',"+
+                        //                                             " IF(LEFT(a.KDCAB,1)='G',"+
+                        //                                                 " IF(a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'SUPERVISOR_CABANG' AND TIPE_BC = a.TIPE_BC),'SUPERVISOR_CABANG','MANAGER_CABANG')"+
+                        //                                             " ,"+
+                        //                                                 " IF(a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'SUPERVISOR_REGION' AND TIPE_BC = a.TIPE_BC),'SUPERVISOR_REGION',"+
+                        //                                                     " IF(a.PROSENTASE_CLIENT>(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'SUPERVISOR_REGION' AND TIPE_BC = a.TIPE_BC) AND a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'DEPUTI_MANAGER_REGION' AND TIPE_BC = a.TIPE_BC),'DEPUTI_MANAGER_REGION',"+
+                        //                                                         " IF(FLOOR(a.PROSENTASE_CLIENT)>(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'DEPUTI_MANAGER_REGION' AND TIPE_BC = a.TIPE_BC) AND FLOOR(a.PROSENTASE_CLIENT)<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'MANAGER_REGION' AND TIPE_BC = a.TIPE_BC),'MANAGER_REGION',"+
+                        //                                                             " IF(a.PROSENTASE_CLIENT>(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'MANAGER_REGION' AND TIPE_BC = a.TIPE_BC) AND a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'REGIONAL_MANAGER' AND TIPE_BC = a.TIPE_BC),'MANAGER_EDPHO','MANAGER_EDPHO')"+
+                        //                                                         " )"+
+                        //                                                     " )"+
+                        //                                                 " )"+
+                        //                                             " ) "+
                                                                     
-                                                                " ) AS OTORISASI"+
-                                                                " FROM broadcast_pengajuan_new a  WHERE a.IS_APPROVAL = '0' AND a.SUB_ID = '"+sub_id+"' AND a.KDCAB = '"+kdcab+"' AND REPLACE(a.NAMA,' ','') = '"+nama+"'"
-                        //console.log("sql_cek_otorisasi : "+sql_cek_otorisasi)
+                        //                                         " ) AS OTORISASI"+
+                        //                                         " FROM broadcast_pengajuan_new a  WHERE a.IS_APPROVAL = '0' AND a.SUB_ID = '"+sub_id+"' AND a.KDCAB = '"+kdcab+"' AND REPLACE(a.NAMA,' ','') = '"+nama+"'"
+                        const sql_cek_otorisasi = "SELECT SPLIT_STRING(a.JABATAN,'_',1) AS JABATAN, "+
+                                                    " a.STEP_APPROVAL, "+
+                                                    " IF(a.STEP_APPROVAL='SUPERVISOR' AND LEFT(a.KDCAB,1)='G','MANAGER', "+
+                                                    "        IF(a.STEP_APPROVAL='MANAGER' AND LEFT(a.KDCAB,1)='G','MANAGER', "+
+                                                    "            IF(a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM ws_pattern_command WHERE JABATAN = 'SUPERVISOR' AND TIPE_BC = a.TIPE_BC AND LOKASI = 'REGIONAL'),'SUPERVISOR',"+  
+                                                    "                IF(a.PROSENTASE_CLIENT>(SELECT JUMLAH_KLIEN FROM ws_pattern_command WHERE JABATAN = 'SUPERVISOR' AND TIPE_BC = a.TIPE_BC AND LOKASI = 'REGIONAL') AND a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM ws_pattern_command WHERE JABATAN = 'DEPUTY MANAGER' AND TIPE_BC = a.TIPE_BC AND LOKASI = 'REGIONAL'),'DEPUTY MANAGER','MANAGER') "+    
+                                                    "            ) "+
+                                                    "        ) "+
+                                                    ") AS OTORISASI "+
+                                                    " FROM broadcast_pengajuan_new a  "+
+                                                    " WHERE a.IS_APPROVAL = '0' "+
+                                                    " AND a.SUB_ID =  '"+sub_id+"' "+
+                                                    " AND a.KDCAB = '"+kdcab+"' "+
+                                                    " AND REPLACE(a.NAMA,' ','') = '"+nama+"' "+
+                                                    " ;"
+                        console.log("sql_cek_otorisasi : "+sql_cek_otorisasi)
+                        
                         mysqlLib.executeQuery(sql_cek_otorisasi).then((d) => {
-                              const res_otorisasi = d[0].OTORISASI.trim();
+                              const res_otorisasi = d[0].OTORISASI;
                               //const res_jabatan = d[0].JABATAN.trim();
-                                const sql_query = "SELECT LOCATION,NIK,NAMA,JABATAN FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"' ORDER BY branch_code ASC;";
-                                //console.log("sql_query_chat_id : "+sql_query)
+                                const sql_query = "SELECT BRANCH AS LOCATION,NIK,NAMA,JABATAN FROM idmcmd2.ws_personil WHERE ChatIDTelegram = '"+chatId+"' ORDER BY NIK ASC;";
+                                console.log("sql_query_chat_id : "+sql_query)
                                 mysqlLib.executeQuery(sql_query).then((d) => {
-                                      const res_hasil = d[0].LOCATION.trim();
+                                      const res_hasil = d[0].LOCATION;
                                       const res_nik = d[0].NIK;
                                       const res_nama = d[0].NAMA;
                                       const res_jabatan = d[0].JABATAN;
@@ -205,7 +239,7 @@ bot.on('message', (msg) => {
                                             console.log("OTORISASI SUDAH SAMA : "+res_otorisasi+" - "+res_jabatan);
                                             //const message_send = "<b>Mohon maaf anda tidak bisa melakukan generate OTP atas pengajuan tersebut. Jumlah klien melebihi batas jangkauan Supervisor untuk melakukan Broadcast Command</b>"    
                                             //bot.sendMessage(chatId, message_send,{parse_mode: 'HTML'});
-                                            bot.sendMessage(msg.chat.id, "Mohon tunggu, OTP akan idmcommand akan memberikan OTP");
+                                            bot.sendMessage(msg.chat.id, "Mohon tunggu, idmcommand akan memberikan OTP");
                                         
                                             pub_Command(chatId,res_hasil,res_nik,res_nama,kdcab,sub_id,nama);
                                             //console.log("Data ada");
@@ -221,6 +255,7 @@ bot.on('message', (msg) => {
                                 });
                                 
                         });
+                        
                   //-- jika sudah ter-approval muncul pesan bahwasanya data broadcast pengajuan sudah di eksekusi --//      
                   }else{
                         console.log("Not Data exists");
@@ -243,10 +278,12 @@ bot.on('message', (msg) => {
                   }
                   
             });
+            
            
 
             
         }catch(exc){
+            console.log("ERROR : "+exc.tostring())
             bot.sendMessage(msg.chat.id, "Mohon maaf terjadi gangguan, silahkan kontak administrator idmcommand !!!");   
         }
 
@@ -272,33 +309,48 @@ bot.on('message', (msg) => {
                             //-- cek otorisasi OTP --//
                             //== IFNULL((SELECT IF(JABATAN='SUPPORT','SUPERVISOR',IF(JABATAN='SUPERVISOR','MANAGER','HO')) FROM `pattern_command` WHERE JUMLAH_KLIEN <= a.JUMLAH_CLIENT ORDER BY JUMLAH_KLIEN DESC LIMIT 0,1),'-') AS OTORISASI
                             // SELECT a.CREATE_DATE,a.KDCAB,a.JUMLAH_CLIENT,a.COMMAND_KIRIM,a.NIK,a.NAMA,a.JABATAN,a.TIPE,a.TOPIC_BC,(CASE a.IS_APPROVAL WHEN '0' THEN 'Pengajuan' WHEN '1' THEN 'OK' WHEN '2' THEN 'NOK' ELSE '' END) AS IS_APPROVAL,a.KETERANGAN,IFNULL((SELECT IF(JABATAN='SUPPORT','SUPERVISOR',IF(JABATAN='SUPERVISOR','MANAGER','HO')) FROM `pattern_command` WHERE JUMLAH_KLIEN <= a.JUMLAH_CLIENT ORDER BY JUMLAH_KLIEN DESC LIMIT 0,1),'-') AS OTORISASI,NIK_PEMBERI_OTP,NAMA_PEMBERI_OTP,DATE_FORMAT(CREATE_OTP,'%Y-%m-%d %H:%i:%s') AS CREATE_OTP  FROM broadcast_pengajuan a  WHERE IS_APPROVAL = '0' AND SUB_ID = '"+sub_id+"' AND KDCAB = '"+kdcab+"' AND REPLACE(NAMA,' ','') = '"+nama+"'  ORDER BY a.CREATE_DATE DESC LIMIT 0,100
-                            const sql_cek_otorisasi = "SELECT SPLIT_STRING(a.JABATAN,'_',1) AS JABATAN,"+
-                                                                " a.STEP_APPROVAL,"+
-                                                                " IF(a.JABATAN='REGIONAL_MANAGER' OR a.JABATAN='EDP_HO',"+
-                                                                    " 'MANAGER_EDPHO',"+
-                                                                    " IF(LEFT(a.KDCAB,1)='G',"+
-                                                                        " IF(a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'SUPERVISOR_CABANG' AND TIPE_BC = a.TIPE_BC),'SUPERVISOR_CABANG','MANAGER_CABANG')"+
-                                                                    " ,"+
-                                                                        " IF(a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'SUPERVISOR_REGION' AND TIPE_BC = a.TIPE_BC),'SUPERVISOR_REGION',"+
-                                                                            " IF(a.PROSENTASE_CLIENT>(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'SUPERVISOR_REGION' AND TIPE_BC = a.TIPE_BC) AND a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'DEPUTI_MANAGER_REGION' AND TIPE_BC = a.TIPE_BC),'DEPUTI_MANAGER_REGION',"+
-                                                                                " IF(FLOOR(a.PROSENTASE_CLIENT)>(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'DEPUTI_MANAGER_REGION' AND TIPE_BC = a.TIPE_BC) AND FLOOR(a.PROSENTASE_CLIENT)<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'MANAGER_REGION' AND TIPE_BC = a.TIPE_BC),'MANAGER_REGION',"+
-                                                                                    " IF(a.PROSENTASE_CLIENT>(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'MANAGER_REGION' AND TIPE_BC = a.TIPE_BC) AND a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'REGIONAL_MANAGER' AND TIPE_BC = a.TIPE_BC),'MANAGER_EDPHO','MANAGER_EDPHO')"+
-                                                                                " )"+
-                                                                            " )"+
-                                                                        " )"+
-                                                                    " ) "+
+                            // const sql_cek_otorisasi = "SELECT SPLIT_STRING(a.JABATAN,'_',1) AS JABATAN,"+
+                            //                                     " a.STEP_APPROVAL,"+
+                            //                                     " IF(a.JABATAN='REGIONAL_MANAGER' OR a.JABATAN='EDP_HO',"+
+                            //                                         " 'MANAGER_EDPHO',"+
+                            //                                         " IF(LEFT(a.KDCAB,1)='G',"+
+                            //                                             " IF(a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'SUPERVISOR_CABANG' AND TIPE_BC = a.TIPE_BC),'SUPERVISOR_CABANG','MANAGER_CABANG')"+
+                            //                                         " ,"+
+                            //                                             " IF(a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'SUPERVISOR_REGION' AND TIPE_BC = a.TIPE_BC),'SUPERVISOR_REGION',"+
+                            //                                                 " IF(a.PROSENTASE_CLIENT>(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'SUPERVISOR_REGION' AND TIPE_BC = a.TIPE_BC) AND a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'DEPUTI_MANAGER_REGION' AND TIPE_BC = a.TIPE_BC),'DEPUTI_MANAGER_REGION',"+
+                            //                                                     " IF(FLOOR(a.PROSENTASE_CLIENT)>(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'DEPUTI_MANAGER_REGION' AND TIPE_BC = a.TIPE_BC) AND FLOOR(a.PROSENTASE_CLIENT)<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'MANAGER_REGION' AND TIPE_BC = a.TIPE_BC),'MANAGER_REGION',"+
+                            //                                                         " IF(a.PROSENTASE_CLIENT>(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'MANAGER_REGION' AND TIPE_BC = a.TIPE_BC) AND a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'REGIONAL_MANAGER' AND TIPE_BC = a.TIPE_BC),'MANAGER_EDPHO','MANAGER_EDPHO')"+
+                            //                                                     " )"+
+                            //                                                 " )"+
+                            //                                             " )"+
+                            //                                         " ) "+
                                                                     
-                                                                " ) AS OTORISASI"+
-                                                                " FROM broadcast_pengajuan_new a  WHERE a.IS_APPROVAL = '0' AND a.SUB_ID = '"+sub_id+"' AND a.KDCAB = '"+kdcab+"' AND REPLACE(a.NAMA,' ','') = '"+nama+"'"
-                            //console.log(sql_cek_otorisasi)
+                            //                                     " ) AS OTORISASI"+
+                            //                                     " FROM broadcast_pengajuan_new a  WHERE a.IS_APPROVAL = '0' AND a.SUB_ID = '"+sub_id+"' AND a.KDCAB = '"+kdcab+"' AND REPLACE(a.NAMA,' ','') = '"+nama+"'"
+                            const sql_cek_otorisasi = "SELECT SPLIT_STRING(a.JABATAN,'_',1) AS JABATAN, "+
+                                                        " a.STEP_APPROVAL, "+
+                                                        " IF(a.STEP_APPROVAL='SUPERVISOR' AND LEFT(a.KDCAB,1)='G','MANAGER', "+
+                                                        "        IF(a.STEP_APPROVAL='MANAGER' AND LEFT(a.KDCAB,1)='G','MANAGER', "+
+                                                        "            IF(a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM ws_pattern_command WHERE JABATAN = 'SUPERVISOR' AND TIPE_BC = a.TIPE_BC AND LOKASI = 'REGIONAL'),'SUPERVISOR',"+  
+                                                        "                IF(a.PROSENTASE_CLIENT>(SELECT JUMLAH_KLIEN FROM ws_pattern_command WHERE JABATAN = 'SUPERVISOR' AND TIPE_BC = a.TIPE_BC AND LOKASI = 'REGIONAL') AND a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM ws_pattern_command WHERE JABATAN = 'DEPUTY MANAGER' AND TIPE_BC = a.TIPE_BC AND LOKASI = 'REGIONAL'),'DEPUTY MANAGER','MANAGER') "+    
+                                                        "            ) "+
+                                                        "        ) "+
+                                                        ") AS OTORISASI, "+
+                                                        " FROM broadcast_pengajuan_new a  "+
+                                                        " WHERE a.IS_APPROVAL = '0' "+
+                                                        " AND a.SUB_ID =  '"+sub_id+"' "+
+                                                        " AND a.KDCAB = '"+kdcab+"' "+
+                                                        " AND REPLACE(a.NAMA,' ','') = '"+nama+"' "+
+                                                        " ;"
+                            console.log(sql_cek_otorisasi)
                             mysqlLib.executeQuery(sql_cek_otorisasi).then((d) => {
                                   const res_otorisasi = d[0].OTORISASI.trim();
                                   const res_step_approval = d[0].STEP_APPROVAL.trim();
                                   //const res_jabatan = d[0].JABATAN.trim();
-                                    const sql_query = "SELECT LOCATION,NIK,NAMA,JABATAN FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"' ORDER BY branch_code ASC;";
+                                    const sql_query = "SELECT BRANCH AS LOCATION,NIK,NAMA,JABATAN FROM idmcmd2.ws_personil WHERE ChatIDTelegram = '"+chatId+"' ORDER BY NIK ASC;";
                                     //console.log(sql_query)
                                     mysqlLib.executeQuery(sql_query).then((d) => {
-                                          const res_hasil = d[0].LOCATION.trim();
+                                          const res_hasil = d[0].LOCATION;
                                           const res_nik = d[0].NIK;
                                           const res_nama = d[0].NAMA;
                                           const res_jabatan = d[0].JABATAN;
@@ -312,18 +364,12 @@ bot.on('message', (msg) => {
                                                 //-- kirim pesan kepada user yang sedang melakukan approval --//
                                                 bot.sendMessage(msg.chat.id, "Mohon tunggu, Proses approval sedang diproses");
                                                 var next_step_approval = "";
-                                                if(res_step_approval == "SUPERVISOR_CABANG"){
-                                                    next_step_approval = "MANAGER_CABANG";    
-                                                }else if(res_step_approval == "SUPERVISOR_REGION"){
-                                                    next_step_approval = "DEPUTI_MANAGER_REGION";
-                                                }else if(res_step_approval == "DEPUTI_MANAGER_REGION"){
-                                                    next_step_approval = "MANAGER_REGION";
-                                                }else if(res_step_approval == "MANAGER_REGION"){
-                                                    next_step_approval = "REGIONAL_MANAGER";
-                                                }else if(res_step_approval == "REGIONAL_MANAGER"){
-                                                    next_step_approval = "MANAGER_EDPHO";
-                                                }else{
-
+                                                if(res_step_approval == "SUPERVISOR" && kdcab.substring(0,1) == 'G'){
+                                                    next_step_approval = "MANAGER";    
+                                                }else if(res_step_approval == "SUPERVISOR" && kdcab.substring(0,1) == 'R'){
+                                                    next_step_approval = "DEPUTY MANAGER";
+                                                }else if(res_step_approval == "DEPUTY MANAGER"){
+                                                    next_step_approval = "MANAGER";
                                                 }
 
 
@@ -360,7 +406,7 @@ bot.on('message', (msg) => {
                                                             if(next_step_approval == "REGIONAL_MANAGER" || next_step_approval == "MANAGER_EDPHO"){
                                                                 sql_info_next_step_approval = "SELECT CHAT_ID,NAMA FROM idm_org_structure where JABATAN = '"+next_step_approval+"' AND LOCATION = 'HO';";
                                                             }else{
-                                                                sql_info_next_step_approval = "SELECT CHAT_ID,NAMA FROM idm_org_structure where JABATAN = '"+next_step_approval+"' AND LOCATION = '"+res_hasil+"';";
+                                                                sql_info_next_step_approval = "SELECT ChatIDTelegram as CHAT_ID,NAMA FROM idmcmd2.ws_personil where JABATAN = '"+next_step_approval+"' AND BRANCH = '"+res_hasil+"';";
                                                             }
                                                             
                                                             //console.log(sql_info_next_step_approval);
@@ -382,7 +428,7 @@ bot.on('message', (msg) => {
                                                             });
 
                                                             //-- kirim pesan kepada user pemohon yang mengajukan broadcast --//
-                                                            const sql_identitas_pemohon = "SELECT CHAT_ID FROM idm_org_structure WHERE NIK = '"+nik_pemohon+"';";
+                                                            const sql_identitas_pemohon = "SELECT ChatIDTelegram as CHAT_ID FROM idmcmd2.ws_personil WHERE NIK = '"+nik_pemohon+"';";
                                                             //console.log(sql_identitas_pemohon);
                                                                 mysqlLib.executeQuery(sql_identitas_pemohon).then((d) => {
                                                                 var chat_id_pemohon = d[0].CHAT_ID;
@@ -446,6 +492,7 @@ bot.on('message', (msg) => {
 
             
         }catch(exc){
+            console.log("ERROR : "+exc.tostring())
             bot.sendMessage(msg.chat.id, "Mohon maaf terjadi gangguan, silahkan kontak administrator idmcommand !!!");   
         }
 
@@ -454,7 +501,7 @@ bot.on('message', (msg) => {
     else if(msg.text.toString().includes('daftar')){
         // send a message to the chat acknowledging receipt of their message
         try{    
-            const sql_query = "SELECT EXISTS(SELECT LOCATION FROM idm_org_structure WHERE CHAT_ID = '"+msg.chat.id+"') AS HASIL;";
+            const sql_query = "SELECT EXISTS(SELECT Branch FROM idmcmd2.ws_personil WHERE ChatIDTelegram = '"+msg.chat.id+"') AS HASIL;";
             //console.log(sql_query)
             mysqlLib.executeQuery(sql_query).then((d) => {
                   const res_hasil = d[0].HASIL;
@@ -472,20 +519,20 @@ bot.on('message', (msg) => {
        
     }else if(msg.text.toString().includes('#')){
         const nik_user = msg.text.toString().split("#").join('');
-        const sql_query_cek_nik = "SELECT EXISTS(SELECT NIK FROM idm_org_structure WHERE NIK = '"+nik_user+"') AS HASIL;";
+        const sql_query_cek_nik = "SELECT EXISTS(SELECT NIK FROM idmcmd2.ws_personil WHERE NIK = '"+nik_user+"') AS HASIL;";
         //console.log(sql_query_cek_nik)
         mysqlLib.executeQuery(sql_query_cek_nik).then((d) => {
             const res_hasil_cek_nik = d[0].HASIL;
             if(res_hasil_cek_nik == '1'){
 
-                const sql_query_jabatan = "SELECT IF(a.JABATAN='ADMINISTRATOR' OR a.JABATAN LIKE 'SUPERVISOR%' OR a.JABATAN LIKE 'MANAGER%' OR a.JABATAN LIKE 'SUPPORT%' OR a.JABATAN LIKE 'EDP%','1','0') AS HASIL FROM idm_org_structure a WHERE a.NIK = '"+nik_user+"';";
+                const sql_query_jabatan = "SELECT IF(a.JABATAN='ADMINISTRATOR' OR a.JABATAN LIKE 'SUPERVISOR%' OR a.JABATAN LIKE '%MANAGER%' OR a.JABATAN LIKE 'SUPPORT%' OR a.JABATAN LIKE 'EDP%' OR a.JABATAN LIKE '%DEPUTY%' OR a.JABATAN LIKE '%KOORDINATOR%','1','0') AS HASIL FROM idmcmd2.ws_personil a WHERE a.NIK = '"+nik_user+"';";
                 //console.log(sql_query_jabatan)
-                mysqlLib.executeQuery(sql_query_jabatan).then((d) => {
+                mysqlLib.executeQuery(sql_query_jabatan).then(async (d) => {
                      const res_hasil_jabatan = d[0].HASIL.trim();
                      if(res_hasil_jabatan == '1'){
                         try{
                                 //-- proses update chat id berdasarkan nik yang mendaftar --//
-                                const sql_query = "UPDATE idm_org_structure SET CHAT_ID = '"+chatId+"' WHERE NIK = '"+nik_user+"';";
+                                const sql_query = "UPDATE idmcmd2.ws_personil SET ChatIDTelegram = '"+chatId+"' WHERE NIK = '"+nik_user+"';";
                                 //console.log(sql_query)
 
                                 mysqlLib.executeQuery(sql_query).then((d) => {
@@ -493,13 +540,15 @@ bot.on('message', (msg) => {
                                 });   
 
                                 //-- pengecekan list pengajuan broadcast --//
-                                const sql_query_list_bc = "SELECT COUNT(CREATE_DATE) AS JUMLAH FROM broadcast_pengajuan_new WHERE IS_APPROVAL = '0' AND DATE(CREATE_DATE) = CURDATE() AND KDCAB = (SELECT LOCATION FROM idm_org_structure WHERE CHAT_ID = '"+msg.chat.id+"' ORDER BY NIK ASC LIMIT 0,1);"
-                                //console.log(sql_query_list_bc);
+                                let res_repl_lokasi = await mysqlLib.executeQuery("SELECT IF(LEFT(Branch,3)='RE0',REPLACE(Branch,'RE0','REG'),Branch) AS LOKASI FROM idmcmd2.ws_personil WHERE ChatIDTelegram = '"+msg.chat.id+"' ORDER BY NIK ASC LIMIT 0,1");
+                                let res_get_lokasi = res_repl_lokasi[0].LOKASI;
+                                const sql_query_list_bc = "SELECT COUNT(CREATE_DATE) AS JUMLAH FROM broadcast_pengajuan_new WHERE IS_APPROVAL = '0' AND DATE(CREATE_DATE) = CURDATE() AND KDCAB = '"+res_get_lokasi+"';"
+                                console.log(sql_query_list_bc);
                                 mysqlLib.executeQuery(sql_query_list_bc).then((d) => {
                                     const res_hasil_list_bc = parseFloat(d[0].JUMLAH);
                                     if(res_hasil_list_bc > 0){
                                         //-- proses list broadcast command --//
-                                        const sql_query_bc_command = "SELECT CONCAT('/CMD','_',KDCAB,'_',SUB_ID,'_',REPLACE(NAMA,' ','')) AS ID FROM broadcast_pengajuan_new WHERE IS_APPROVAL = '0' AND DATE(CREATE_DATE) = CURDATE() AND KDCAB = (SELECT LOCATION FROM idm_org_structure WHERE CHAT_ID = '"+msg.chat.id+"' ORDER BY NIK ASC LIMIT 0,1);"
+                                        const sql_query_bc_command = "SELECT CONCAT('/CMD','_',KDCAB,'_',SUB_ID,'_',REPLACE(NAMA,' ','')) AS ID FROM broadcast_pengajuan_new WHERE IS_APPROVAL = '0' AND DATE(CREATE_DATE) = CURDATE() AND KDCAB = '"+res_get_lokasi+"';"
                                         mysqlLib.executeQuery(sql_query_bc_command).then((d) => {
                                             //const list_bc_command = "";
                                             //console.log(d.length);
@@ -543,424 +592,414 @@ bot.on('message', (msg) => {
         const kdcab = pesan.split('_')[1];
         const sub_id = pesan.split('_')[2];
         const nama = pesan.split('_')[3];
-        const sql_query = "SELECT LOCATION,NIK,NAMA,JABATAN FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"' ORDER BY branch_code ASC;";
-        //console.log(sql_query)
+        const sql_query = "SELECT BRANCH AS LOCATION,NIK,NAMA,JABATAN FROM idmcmd2.ws_personil WHERE ChatIDTelegram = '"+chatId+"' ORDER BY NIK ASC;";
+        console.log(sql_query)
         mysqlLib.executeQuery(sql_query).then((d) => {
             const res_hasil = d[0].LOCATION.trim();
             const res_nik = d[0].NIK;
             const res_nama = d[0].NAMA;
             const res_jabatan = d[0].JABATAN;
-
-            try{
-                //--munculkan detail command yang akan di broadcast --//
-                const sql_query_command_kirim = "SELECT DATE_FORMAT(a.CREATE_DATE,'%d %M %Y %H:%i:%s') AS CREATE_DATE,"+
-                                                            " a.NAMA,"+
-                                                            " a.JABATAN,"+
-                                                            " a.TIPE_BC AS TIPE,"+
-                                                            " a.TIPE AS TUJUAN_BROADCAST,"+
-                                                            " a.JUMLAH_CLIENT,"+
-                                                            " a.STEP_APPROVAL,"+
-                                                            " IF(a.JABATAN='REGIONAL_MANAGER' OR a.JABATAN='EDP_HO',"+
-                                                                        " 'MANAGER_EDPHO',"+
-                                                                        " IF(LEFT(a.KDCAB,1)='G',"+
-                                                                            " IF(a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'SUPERVISOR_CABANG' AND TIPE_BC = a.TIPE_BC),'SUPERVISOR_CABANG','MANAGER_CABANG')"+
-                                                                        " ,"+
-                                                                            " IF(a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'SUPERVISOR_REGION' AND TIPE_BC = a.TIPE_BC),'SUPERVISOR_REGION',"+
-                                                                                " IF(a.PROSENTASE_CLIENT>(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'SUPERVISOR_REGION' AND TIPE_BC = a.TIPE_BC) AND a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'DEPUTI_MANAGER_REGION' AND TIPE_BC = a.TIPE_BC),'DEPUTI_MANAGER_REGION',"+
-                                                                                    " IF(FLOOR(a.PROSENTASE_CLIENT)>(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'DEPUTI_MANAGER_REGION' AND TIPE_BC = a.TIPE_BC) AND FLOOR(a.PROSENTASE_CLIENT)<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'MANAGER_REGION' AND TIPE_BC = a.TIPE_BC),'MANAGER_REGION',"+
-                                                                                        " IF(a.PROSENTASE_CLIENT>(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'MANAGER_REGION' AND TIPE_BC = a.TIPE_BC) AND a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM m_pattern_command WHERE JABATAN = 'REGIONAL_MANAGER' AND TIPE_BC = a.TIPE_BC),'MANAGER_EDPHO','MANAGER_EDPHO')"+
-                                                                                    " )"+
-                                                                                " )"+
-                                                                            " )"+
-                                                                        " ) "+
-                                                                        
-                                                                    " ) AS OTORISASI_TERAKHIR,"+
-                                                            " LENGTH(a.COMMAND_KIRIM) AS PANJANG_COMMAND,"+ 
-                                                            //" IF(LENGTH(a.COMMAND_KIRIM)>200,CONCAT(CONVERT(TRIM(REPLACE(a.COMMAND_KIRIM,'\r\n',' ')),CHAR(200)),' dst.'),TRIM(REPLACE(a.COMMAND_KIRIM,'\r\n',' '))) AS COMMAND_KIRIM,"+
-                                                            " a.COMMAND_KIRIM,"+ 
-                                                            " a.KETERANGAN,"+
-                                                            " a.TOPIC_BC"+ 
-                                                            " FROM broadcast_pengajuan_new a"+
+            if(res_jabatan.includes('SUPPORT')){
+                const message = "Mohon maaf anda tidak berhak untuk mengakses informasi broadcast tersebut!"
+                bot.sendMessage(msg.chat.id, message); 
+            }else{
+                try{
+                    //--munculkan detail command yang akan di broadcast --//
+                    const sql_query_command_kirim = "SELECT DATE_FORMAT(a.CREATE_DATE,'%d %M %Y %H:%i:%s') AS CREATE_DATE, "+
+                                                            "a.NAMA, "+
+                                                            "a.JABATAN, "+
+                                                            "a.TIPE_BC AS TIPE, "+
+                                                            "a.TIPE AS TUJUAN_BROADCAST, "+
+                                                            "a.JUMLAH_CLIENT, "+
+                                                            "a.STEP_APPROVAL, "+
+                                                            "a.PROSENTASE_CLIENT,"+
+                                                            " IF(a.STEP_APPROVAL='SUPERVISOR' AND LEFT(a.KDCAB,1)='G','MANAGER', "+
+                                                            "        IF(a.STEP_APPROVAL='MANAGER' AND LEFT(a.KDCAB,1)='G','MANAGER', "+
+                                                            "            IF(a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM ws_pattern_command WHERE JABATAN = 'SUPERVISOR' AND TIPE_BC = a.TIPE_BC AND LOKASI = 'REGIONAL'),'SUPERVISOR',"+  
+                                                            "                IF(a.PROSENTASE_CLIENT>(SELECT JUMLAH_KLIEN FROM ws_pattern_command WHERE JABATAN = 'SUPERVISOR' AND TIPE_BC = a.TIPE_BC AND LOKASI = 'REGIONAL') AND a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM ws_pattern_command WHERE JABATAN = 'DEPUTY MANAGER' AND TIPE_BC = a.TIPE_BC AND LOKASI = 'REGIONAL'),'DEPUTY MANAGER','MANAGER') "+    
+                                                            "            ) "+
+                                                            "        ) "+
+                                                            ") AS OTORISASI_TERAKHIR, "+
+                                                            " LENGTH(a.COMMAND_KIRIM) AS PANJANG_COMMAND, "+
+                                                            " a.COMMAND_KIRIM, "+
+                                                            " a.KETERANGAN, "+
+                                                            " a.TOPIC_BC "+
+                                                            
+                                                            " FROM idmcmd.broadcast_pengajuan_new a "+
                                                             " WHERE a.KDCAB = '"+kdcab+"'"+ 
-
                                                             " AND a.SUB_ID = '"+sub_id+"'"+ 
                                                             " AND a.IS_APPROVAL = '0'"+
                                                             " AND a.STEP_APPROVAL RLIKE '"+res_jabatan+"'"+ 
                                                             " AND REPLACE(a.NAMA,' ','') = '"+nama+"'"+
-                                                            " GROUP BY a.SUB_ID ;";
-                console.log("sql_query_command_kirim : "+sql_query_command_kirim)
-
-                mysqlLib.executeQuery(sql_query_command_kirim).then((d) => {
-                    try{
-                        const create_date = d[0].CREATE_DATE;
-                        const nama = d[0].NAMA;
-                        const jabatan = d[0].JABATAN;
-                        const tipe = d[0].TIPE;
-                        const jumlah_client = d[0].JUMLAH_CLIENT;
-                        const command_kirim = d[0].COMMAND_KIRIM;
-                        const keterangan = d[0].KETERANGAN;
-                        const step_approval = d[0].STEP_APPROVAL;
-                        const otorisasi_terakhir = d[0].OTORISASI_TERAKHIR;
-                        const tujuan_broadcast = d[0].TUJUAN_BROADCAST;
-                        const panjang_command = d[0].PANJANG_COMMAND;
-                        const topic_bc = d[0].TOPIC_BC;
-
-                        var is_generate_otp_or_approval = "";
-                        var is_perintah_generate_otp_or_approval = "";
-                        if(step_approval != otorisasi_terakhir){
-                            is_generate_otp_or_approval = "/APPROVAL_"+kdcab+"_"+sub_id+"_"+nama.split(" ").join('').split(' ').join('').split(' ').join('')+"\n\n";
-                            is_perintah_generate_otp_or_approval = "*) Mohon Bapak SPV/MGR untuk melakukan supervisi terhadap command yang akan di broadcast sebelum melakukan approval pengajuan broadcast.\n\n"+"<b><i>Silahkan klik link dibawah untuk approval ke level selanjutnya</i></b>\n";
-                        }else if(step_approval == otorisasi_terakhir){
-                            is_generate_otp_or_approval = "/OTP_"+kdcab+"_"+sub_id+"_"+nama.split(" ").join('').split(' ').join('').split(' ').join('')+"\n\n";
-                            is_perintah_generate_otp_or_approval = "*) Mohon Bapak SPV/MGR untuk melakukan supervisi terhadap command yang akan di broadcast sebelum melakukan generate OTP.\n\n"+"<b><i>Silahkan klik link dibawah untuk generate OTP</i></b>\n";
-                        }else{
-
-                        }
-
-                        var is_tolak = "/REJECT_"+kdcab+"_"+sub_id+"_"+nama.split(" ").join('').split(' ').join('').split(' ').join('');
-                        //console.log("MESSAGE TOLAK : "+is_tolak);
-                        var message = "";
-                        //if(tipe == 'CMD'){
-                            var is_approval = "";
-                            var res_step_approval = step_approval;
-                            var next_step_approval = "";
-                            if(res_step_approval == "SUPERVISOR_CABANG"){
-                                next_step_approval = "MANAGER_CABANG";    
-                            }else if(res_step_approval == "MANAGER_CABANG"){
-                                next_step_approval = "MANAGER_CABANG";
-                            }else if(res_step_approval == "SUPERVISOR_REGION"){
-                                next_step_approval = "DEPUTI_MANAGER_REGION";
-                            }else if(res_step_approval == "DEPUTI_MANAGER_REGION"){
-                                next_step_approval = "MANAGER_REGION";
-                            }else if(res_step_approval == "MANAGER_REGION"){
-                                next_step_approval = "REGIONAL_MANAGER";
-                            }else if(res_step_approval == "REGIONAL_MANAGER"){
-                                next_step_approval = "MANAGER_EDPHO";
-                            }else{
-
-                            }
-
+                                                            " GROUP BY a.SUB_ID ;"
+                    console.log("sql_query_command_kirim : "+sql_query_command_kirim)
+    
+                    mysqlLib.executeQuery(sql_query_command_kirim).then((d) => {
+                        try{
+                            const create_date = d[0].CREATE_DATE;
+                            const nama = d[0].NAMA;
+                            const jabatan = d[0].JABATAN;
+                            const tipe = d[0].TIPE;
+                            const jumlah_client = d[0].JUMLAH_CLIENT;
+                            const command_kirim = d[0].COMMAND_KIRIM;
+                            const keterangan = d[0].KETERANGAN;
+                            const step_approval = d[0].STEP_APPROVAL;
+                            const otorisasi_terakhir = d[0].OTORISASI_TERAKHIR;
+                            console.log("step_approval : "+step_approval+" VS "+otorisasi_terakhir)
+                            const tujuan_broadcast = d[0].TUJUAN_BROADCAST;
+                            const panjang_command = d[0].PANJANG_COMMAND;
+                            const topic_bc = d[0].TOPIC_BC;
+    
+                            var is_generate_otp_or_approval = "";
+                            var is_perintah_generate_otp_or_approval = "";
                             if(step_approval != otorisasi_terakhir){
-                                is_approval = "<b>Approval 1 :</b>\n"
-                                    +"<i>"+step_approval+"</i>"+"\n\n"
-                                    +"<b>Approval 2 :</b>\n"
-                                    +"<i>"+next_step_approval+"</i>"+"\n\n\n"
+                                is_generate_otp_or_approval = "/APPROVAL_"+kdcab+"_"+sub_id+"_"+nama.split(" ").join('').split(' ').join('').split(' ').join('')+"\n\n";
+                                is_perintah_generate_otp_or_approval = "*) Mohon Bapak SPV/MGR untuk melakukan supervisi terhadap command yang akan di broadcast sebelum melakukan approval pengajuan broadcast.\n\n"+"<b><i>Silahkan klik link dibawah untuk approval ke level selanjutnya</i></b>\n";
+                            }else if(step_approval == otorisasi_terakhir){
+                                is_generate_otp_or_approval = "/OTP_"+kdcab+"_"+sub_id+"_"+nama.split(" ").join('').split(' ').join('').split(' ').join('')+"\n\n";
+                                is_perintah_generate_otp_or_approval = "*) Mohon Bapak SPV/MGR untuk melakukan supervisi terhadap command yang akan di broadcast sebelum melakukan generate OTP.\n\n"+"<b><i>Silahkan klik link dibawah untuk generate OTP</i></b>\n";
                             }else{
-                                is_approval = "<b>Approval 1 :</b>\n"
-                                    +"<i>"+step_approval+"</i>"+"\n\n\n"
+    
                             }
-
-                            //console.log('is_approval : '+is_approval);
-                            //--------------------------- HANDLE CMD BROADCAST MESSAGE -------------------------//    
-                            if(tipe == 'CMD'){
-                               
-
-                                var message_body = "";  
-                                var jumlah_karakter_pesan_untuk_split = 600;      
-                                if(parseFloat(panjang_command) > jumlah_karakter_pesan_untuk_split){
-                                
-                                var res_tujuan_broadcast = '';
-                                if(tujuan_broadcast == 'REGIONAL' || tujuan_broadcast == 'REGIONAL SOME STORES'){
-                                    res_tujuan_broadcast = tujuan_broadcast+'-'+topic_bc;
-                                }else{
-                                    res_tujuan_broadcast = tujuan_broadcast;
+    
+                            var is_tolak = "/REJECT_"+kdcab+"_"+sub_id+"_"+nama.split(" ").join('').split(' ').join('').split(' ').join('');
+                            //console.log("MESSAGE TOLAK : "+is_tolak);
+                            var message = "";
+                            //if(tipe == 'CMD'){
+                                var is_approval = "";
+                                var res_step_approval = step_approval;
+                                var next_step_approval = "";
+                                if(res_step_approval == "SUPERVISOR" && kdcab.substring(0,1) == 'G'){
+                                    next_step_approval = "MANAGER";    
+                                }else if(res_step_approval == "SUPERVISOR" && kdcab.substring(0,1) == 'R'){
+                                    next_step_approval = "DEPUTY MANAGER";
+                                }else if(res_step_approval == "DEPUTY MANAGER"){
+                                    next_step_approval = "MANAGER";
                                 }
-
-                                var header_message = "<b>Tanggal Broadcast :</b>\n"
-                                    +"<i>"+create_date+"</i>"+"\n\n"
-                                    +"<b>Nama :</b>\n"
-                                    +"<i>"+nama+"</i>"+"\n\n"
-                                    +"<b>Jabatan :</b>\n"
-                                    +"<i>"+jabatan+"</i>"+"\n\n"
-                                    +"<b>Tipe :</b>\n"
-                                    +"<i>"+tipe+"</i>"+"\n\n"
-                                    +"<b>Penerima :</b>\n"
-                                    +"<i>"+tujuan_broadcast+"</i>"+"\n\n"
-                                    +"<b>Command :</b>\n";
+    
+                                if(step_approval != otorisasi_terakhir){
+                                    is_approval = "<b>Approval 1 :</b>\n"
+                                        +"<i>"+step_approval+"</i>"+"\n\n"
+                                        +"<b>Approval 2 :</b>\n"
+                                        +"<i>"+next_step_approval+"</i>"+"\n\n\n"
+                                }else{
+                                    is_approval = "<b>Approval 1 :</b>\n"
+                                        +"<i>"+step_approval+"</i>"+"\n\n\n"
+                                }
+    
+                                //console.log('is_approval : '+is_approval);
+                                //--------------------------- HANDLE CMD BROADCAST MESSAGE -------------------------//    
+                                if(tipe == 'CMD'){
+                                   
+    
+                                    var message_body = "";  
+                                    var jumlah_karakter_pesan_untuk_split = 600;      
+                                    if(parseFloat(panjang_command) > jumlah_karakter_pesan_untuk_split){
                                     
-                                (async () => {
-                                  await  bot.sendMessage(msg.chat.id, header_message,{parse_mode: 'HTML'});
-                                  //process.exit();
-                                  console.log("Send Header");
-                                  await sleep(3000); 
-                                })();   
-
-                                    var total_message_split = parseFloat(panjang_command) / jumlah_karakter_pesan_untuk_split;
-                                    var res_total_message_split = Math.floor(total_message_split);
-
-                                    var awal = 0;
-                                    var akhir = jumlah_karakter_pesan_untuk_split;
-                                     
-                                    console.log("PANJANG COMMAND KIRIM : "+panjang_command);
-                                    console.log("BAGIAN POTONGAN PESAN : "+parseFloat(res_total_message_split));
-                                        //-- jika potongan pesan lebih dari 1 maka pengiriman pesan lebih dari satu kali --//
-                                        if(parseFloat(res_total_message_split) > 1){
-                                            for(var i = 0;i<parseFloat(res_total_message_split);i++){
-
-                                                if(i == (parseFloat(res_total_message_split)-1)){
-                                                    console.log("PANJANGAN POINTER AKHIR MELEBIHI PANJANG COMMAND : "+akhir+" VS "+parseFloat(panjang_command));
-                                                    message_body = command_kirim.substring(akhir,parseFloat(panjang_command))+""+"\n\n";
-                                                    console.log("message_body "+i+" : "+message_body);
-                                                    var footer_message =  "<b>Jumlah Klien :</b>\n"
-                                                                            +"<i>"+jumlah_client+"</i>"+"\n\n"
-                                                                            +"<b>Keterangan :</b>\n"
-                                                                            +"<i>"+keterangan+"</i>"+"\n\n"
-                                                                            +is_approval
-                                                                            +is_perintah_generate_otp_or_approval
-                                                                            +is_generate_otp_or_approval
-                                                                            +is_tolak;  
-
-                                                    (async () => {
-                                                      await bot.sendMessage(msg.chat.id, message_body);
-                                                      //process.exit();
-                                                      console.log("Send Body ke : "+(i-1));
-                                                      await bot.sendMessage(msg.chat.id, footer_message,{parse_mode: 'HTML'});  
-                                                      console.log("Send Footer");
-                                                      await sleep(3000); 
-                                                    })();    
-                                                   
-         
-                                                   
-                                                    
-
-                                                }else{
-                                                    console.log("PANJANGAN POINTER AKHIR BELUM MELEBIHI PANJANG COMMAND : "+awal+" VS "+parseFloat((awal+jumlah_karakter_pesan_untuk_split)));
-                                                    message_body = command_kirim.substring(awal,akhir)+""+"\n\n";
-                                                    console.log("message_body "+i+" : "+message_body);
-                                                    if(message_body.length > 0){
-                                                         (async () => {
-                                                              await bot.sendMessage(msg.chat.id, message_body);
-                                                              //process.exit();
-                                                              console.log("Send Body ke : "+i);
-                                                              await sleep(1000);  
-                                                        })();   
-                                                    }else{
-                                                        console.log("Tidak mengirimkan pesan");
-                                                    }
-                                                    
-                                                }
-
-                                                if(i == 0){
-                                                    awal = jumlah_karakter_pesan_untuk_split;
-                                                    akhir = jumlah_karakter_pesan_untuk_split;
-                                                }else{
-                                                    awal = akhir;
-                                                    akhir = awal+jumlah_karakter_pesan_untuk_split;
-                                                }
-
-                                            }
-                                        //-- jika potongan pesan hanya 1 maka pengiriman pesan hanya sekali saja --//   
-                                        }else{
-
-                                             var res_tujuan_broadcast = '';
-                                             if(tujuan_broadcast == 'REGIONAL' || tujuan_broadcast == 'REGIONAL SOME STORES'){
-                                                 res_tujuan_broadcast = tujuan_broadcast+'-'+topic_bc;
-                                             }else{
-                                                 res_tujuan_broadcast = tujuan_broadcast;
-                                             }
-
-                                             var header_message = "<b>Tanggal Broadcast :</b>\n"
-                                                    +"<i>"+create_date+"</i>"+"\n\n"
-                                                    +"<b>Nama :</b>\n"
-                                                    +"<i>"+nama+"</i>"+"\n\n"
-                                                    +"<b>Jabatan :</b>\n"
-                                                    +"<i>"+jabatan+"</i>"+"\n\n"
-                                                    +"<b>Tipe :</b>\n"
-                                                    +"<i>"+tipe+"</i>"+"\n\n"
-                                                    +"<b>Penerima :</b>\n"
-                                                    +"<i>"+res_tujuan_broadcast+"</i>"+"\n\n"
-                                                    +"<b>Command :</b>\n";
-                                                    
-                                               
-
-                                            message_body = "`"+command_kirim+"`"+"\n\n";
-                                            sleep(1000);   
-                                            var footer_message =  "<b>Jumlah Klien :</b>\n"
-                                                    +"<i>"+jumlah_client+"</i>"+"\n\n"
-                                                    +"<b>Keterangan :</b>\n"
-                                                    +"<i>"+keterangan+"</i>"+"\n\n"
-                                                    +is_approval
-                                                    +is_perintah_generate_otp_or_approval
-                                                    +is_generate_otp_or_approval
-                                                    +is_tolak;    
-                                            message = header_message+message_body+footer_message;
-                                            bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'});    
-
-                                        }
-                                        console.log("============================================================");
-                                }else{
-
-                                     var res_tujuan_broadcast = '';
-                                     if(tujuan_broadcast == 'REGIONAL' || tujuan_broadcast == 'REGIONAL SOME STORES'){
-                                         res_tujuan_broadcast = tujuan_broadcast+'-'+topic_bc;
-                                     }else{
-                                         res_tujuan_broadcast = tujuan_broadcast;
-                                     }   
-                                     var header_message = "<b>Tanggal Broadcast :</b>\n"
-                                                    +"<i>"+create_date+"</i>"+"\n\n"
-                                                    +"<b>Nama :</b>\n"
-                                                    +"<i>"+nama+"</i>"+"\n\n"
-                                                    +"<b>Jabatan :</b>\n"
-                                                    +"<i>"+jabatan+"</i>"+"\n\n"
-                                                    +"<b>Tipe :</b>\n"
-                                                    +"<i>"+tipe+"</i>"+"\n\n"
-                                                    +"<b>Penerima :</b>\n"
-                                                    +"<i>"+res_tujuan_broadcast+"</i>"+"\n\n"
-                                                    +"<b>Command :</b>\n";
-                                                    
-
-                                    message_body = "`"+command_kirim+"`"+"\n\n";
-                                    console.log("Send Body 1 message");
-                                    sleep(1000);   
-                                    var footer_message =  "<b>Jumlah Klien :</b>\n"
-                                            +"<i>"+jumlah_client+"</i>"+"\n\n"
-                                            +"<b>Keterangan :</b>\n"
-                                            +"<i>"+keterangan+"</i>"+"\n\n"
-                                            +is_approval
-                                            +is_perintah_generate_otp_or_approval
-                                            +is_generate_otp_or_approval
-                                            +is_tolak;    
-                                    message = header_message+message_body+footer_message;
-                                    bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'});
-                                    console.log("Send Footer 1 message");    
-                                }
-
-                            //--------------------------- HANDLE SQL BROADCAST MESSAGE -------------------------//    
-                            }else{
-                                var res_tujuan_broadcast = '';
-                                if(tujuan_broadcast == 'REGIONAL' || tujuan_broadcast == 'REGIONAL SOME STORES'){
-                                    res_tujuan_broadcast = tujuan_broadcast+'-'+topic_bc;
-                                }else{
-                                    res_tujuan_broadcast = tujuan_broadcast;
-                                }
-
-                                var header_message  = "Tanggal Broadcast :\n"
-                                    +""+create_date+""+"\n\n"
-                                    +"Nama :\n"
-                                    +""+nama+""+"\n\n"
-                                    +"Jabatan :\n"
-                                    +""+jabatan+""+"\n\n"
-                                    +"Tipe :\n"
-                                    +""+tipe+""+"\n\n"
-                                    +"Penerima :\n"
-                                    +""+res_tujuan_broadcast+""+"\n\n"
-                                    +"Command :\n";
-
-                                 
-                            
-                                  
-                                    
-                                
-                                var message_body = "";  
-                                var jumlah_karakter_pesan_untuk_split = 600;      
-                                if(parseFloat(panjang_command) > jumlah_karakter_pesan_untuk_split){
+                                    var res_tujuan_broadcast = '';
+                                    if(tujuan_broadcast == 'REGIONAL' || tujuan_broadcast == 'REGIONAL SOME STORES'){
+                                        res_tujuan_broadcast = tujuan_broadcast+'-'+topic_bc;
+                                    }else{
+                                        res_tujuan_broadcast = tujuan_broadcast;
+                                    }
+    
+                                    var header_message = "<b>Tanggal Broadcast :</b>\n"
+                                        +"<i>"+create_date+"</i>"+"\n\n"
+                                        +"<b>Nama :</b>\n"
+                                        +"<i>"+nama+"</i>"+"\n\n"
+                                        +"<b>Jabatan :</b>\n"
+                                        +"<i>"+jabatan+"</i>"+"\n\n"
+                                        +"<b>Tipe :</b>\n"
+                                        +"<i>"+tipe+"</i>"+"\n\n"
+                                        +"<b>Penerima :</b>\n"
+                                        +"<i>"+tujuan_broadcast+"</i>"+"\n\n"
+                                        +"<b>Command :</b>\n";
+                                        
                                     (async () => {
                                       await  bot.sendMessage(msg.chat.id, header_message,{parse_mode: 'HTML'});
                                       //process.exit();
                                       console.log("Send Header");
-                                      await sleep(4000); 
-                                    })();    
-                               
-
-                                    var total_message_split = parseFloat(panjang_command) / jumlah_karakter_pesan_untuk_split;
-                                    var res_total_message_split = Math.floor(total_message_split);
-
-                                    var awal = 0;
-                                    var akhir = jumlah_karakter_pesan_untuk_split;
-                                     
-                                    console.log("PANJANG COMMAND KIRIM : "+panjang_command);
-                                    console.log("BAGIAN POTONGAN PESAN : "+parseFloat(res_total_message_split));
-                                    for(var i = 0;i<parseFloat(res_total_message_split);i++){
-
-                                        if(i == (parseFloat(res_total_message_split)-1)){
-                                            console.log("PANJANGAN POINTER AKHIR MELEBIHI PANJANG COMMAND : "+akhir+" VS "+parseFloat(panjang_command));
-                                            if(parseFloat(res_total_message_split) == 1){
-                                                message_body = command_kirim; //.substring(akhir,parseFloat(panjang_command))+""+"\n\n";
+                                      await sleep(3000); 
+                                    })();   
+    
+                                        var total_message_split = parseFloat(panjang_command) / jumlah_karakter_pesan_untuk_split;
+                                        var res_total_message_split = Math.floor(total_message_split);
+    
+                                        var awal = 0;
+                                        var akhir = jumlah_karakter_pesan_untuk_split;
+                                         
+                                        console.log("PANJANG COMMAND KIRIM : "+panjang_command);
+                                        console.log("BAGIAN POTONGAN PESAN : "+parseFloat(res_total_message_split));
+                                            //-- jika potongan pesan lebih dari 1 maka pengiriman pesan lebih dari satu kali --//
+                                            if(parseFloat(res_total_message_split) > 1){
+                                                for(var i = 0;i<parseFloat(res_total_message_split);i++){
+    
+                                                    if(i == (parseFloat(res_total_message_split)-1)){
+                                                        console.log("PANJANGAN POINTER AKHIR MELEBIHI PANJANG COMMAND : "+akhir+" VS "+parseFloat(panjang_command));
+                                                        //message_body = command_kirim.substring(akhir,parseFloat(panjang_command))+""+"\n\n";
+                                                        //console.log("message_body "+i+" : "+message_body);
+                                                        var footer_message =  "<b>Jumlah Klien :</b>\n"
+                                                                                +"<i>"+jumlah_client+"</i>"+"\n\n"
+                                                                                +"<b>Keterangan :</b>\n"
+                                                                                +"<i>"+keterangan+"</i>"+"\n\n"
+                                                                                +is_approval
+                                                                                +is_perintah_generate_otp_or_approval
+                                                                                +is_generate_otp_or_approval
+                                                                                +is_tolak;  
+    
+                                                        (async () => {
+                                                          //await bot.sendMessage(msg.chat.id, message_body);
+                                                          //process.exit();
+                                                          console.log("Send Body ke : "+(i-1));
+                                                          //await bot.sendMessage(msg.chat.id, footer_message,{parse_mode: 'HTML'});  
+                                                          console.log("Send Footer");
+                                                          await sleep(3000); 
+                                                        })();    
+                                                       
+             
+                                                       
+                                                        
+    
+                                                    }else{
+                                                        console.log("PANJANGAN POINTER AKHIR BELUM MELEBIHI PANJANG COMMAND : "+awal+" VS "+parseFloat((awal+jumlah_karakter_pesan_untuk_split)));
+                                                        //message_body = command_kirim.substring(awal,akhir)+""+"\n\n";
+                                                        //console.log("message_body "+i+" : "+message_body);
+                                                        if(message_body.length > 0){
+                                                             (async () => {
+                                                                  //await bot.sendMessage(msg.chat.id, message_body);
+                                                                  //process.exit();
+                                                                  console.log("Send Body ke : "+i);
+                                                                  await sleep(1000);  
+                                                            })();   
+                                                        }else{
+                                                            console.log("Tidak mengirimkan pesan");
+                                                        }
+                                                        
+                                                    }
+    
+                                                    if(i == 0){
+                                                        awal = jumlah_karakter_pesan_untuk_split;
+                                                        akhir = jumlah_karakter_pesan_untuk_split;
+                                                    }else{
+                                                        awal = akhir;
+                                                        akhir = awal+jumlah_karakter_pesan_untuk_split;
+                                                    }
+    
+                                                }
+                                            //-- jika potongan pesan hanya 1 maka pengiriman pesan hanya sekali saja --//   
                                             }else{
-                                                message_body = command_kirim.substring(akhir,parseFloat(panjang_command))+""+"\n\n";
-                                            } 
-                                            
-                                            console.log("message_body "+i+" : "+message_body);
-                                            var footer_message =  "Jumlah Klien :\n"
-                                                                    +""+jumlah_client+"\n\n"
-                                                                    +"Keterangan :\n"
-                                                                    +""+keterangan+""+"\n\n"
-                                                                    +is_approval
-                                                                    +is_perintah_generate_otp_or_approval
-                                                                    +is_generate_otp_or_approval
-                                                                    +is_tolak;  
-
-                                            (async () => {
-                                              await bot.sendMessage(msg.chat.id, message_body);
-                                              //process.exit();
-                                              console.log("Send Body ke : "+(i-1));
-                                              await bot.sendMessage(msg.chat.id, footer_message,{parse_mode: 'HTML'});  
-                                              console.log("Send Footer");
-                                              await sleep(3000); 
-                                            })();
-                                        }else{
-                                            console.log("PANJANG POINTER AKHIR BELUM MELEBIHI PANJANG COMMAND : "+awal+" VS "+parseFloat((awal+jumlah_karakter_pesan_untuk_split)));
-                                            message_body = command_kirim.substring(awal,akhir)+""+"\n\n";
-                                            console.log("message_body "+i+" : "+message_body);
-                                            if(message_body.length > 0){
-                                                 (async () => {
-                                                      await bot.sendMessage(msg.chat.id, message_body);
-                                                      //process.exit();
-                                                      console.log("Send Body ke : "+i);
-                                                      await sleep(1000);  
-                                                })();   
-                                            }else{
-                                                console.log("Tidak mengirimkan pesan");
+    
+                                                 var res_tujuan_broadcast = '';
+                                                 if(tujuan_broadcast == 'REGIONAL' || tujuan_broadcast == 'REGIONAL SOME STORES'){
+                                                     res_tujuan_broadcast = tujuan_broadcast+'-'+topic_bc;
+                                                 }else{
+                                                     res_tujuan_broadcast = tujuan_broadcast;
+                                                 }
+    
+                                                 var header_message = "<b>Tanggal Broadcast :</b>\n"
+                                                        +"<i>"+create_date+"</i>"+"\n\n"
+                                                        +"<b>Nama :</b>\n"
+                                                        +"<i>"+nama+"</i>"+"\n\n"
+                                                        +"<b>Jabatan :</b>\n"
+                                                        +"<i>"+jabatan+"</i>"+"\n\n"
+                                                        +"<b>Tipe :</b>\n"
+                                                        +"<i>"+tipe+"</i>"+"\n\n"
+                                                        +"<b>Penerima :</b>\n"
+                                                        +"<i>"+res_tujuan_broadcast+"</i>"+"\n\n"
+                                                        +"<b>Command :</b>\n";
+                                                        
+                                                   
+    
+                                                message_body =  "`-`"+"\n\n"; //"`"+command_kirim+"`"+"\n\n";
+                                                sleep(1000);   
+                                                var footer_message =  "<b>Jumlah Klien :</b>\n"
+                                                        +"<i>"+jumlah_client+"</i>"+"\n\n"
+                                                        +"<b>Keterangan :</b>\n"
+                                                        +"<i>"+keterangan+"</i>"+"\n\n"
+                                                        +is_approval
+                                                        +is_perintah_generate_otp_or_approval
+                                                        +is_generate_otp_or_approval
+                                                        +is_tolak;    
+                                                message = header_message+message_body+footer_message;
+                                                bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'});    
+    
                                             }
-                                            
-                                        }
-                                          
-
-
-
-
-
-                                        console.log("============================================================");
-
-
-                                        if(i == 0){
-                                            awal = jumlah_karakter_pesan_untuk_split;
-                                            akhir = jumlah_karakter_pesan_untuk_split;
-                                        }else{
-                                            awal = akhir;
-                                            akhir = awal+jumlah_karakter_pesan_untuk_split;
-                                        }
+                                            console.log("============================================================");
+                                    }else{
+    
+                                         var res_tujuan_broadcast = '';
+                                         if(tujuan_broadcast == 'REGIONAL' || tujuan_broadcast == 'REGIONAL SOME STORES'){
+                                             res_tujuan_broadcast = tujuan_broadcast+'-'+topic_bc;
+                                         }else{
+                                             res_tujuan_broadcast = tujuan_broadcast;
+                                         }   
+                                         var header_message = "<b>Tanggal Broadcast :</b>\n"
+                                                        +"<i>"+create_date+"</i>"+"\n\n"
+                                                        +"<b>Nama :</b>\n"
+                                                        +"<i>"+nama+"</i>"+"\n\n"
+                                                        +"<b>Jabatan :</b>\n"
+                                                        +"<i>"+jabatan+"</i>"+"\n\n"
+                                                        +"<b>Tipe :</b>\n"
+                                                        +"<i>"+tipe+"</i>"+"\n\n"
+                                                        +"<b>Penerima :</b>\n"
+                                                        +"<i>"+res_tujuan_broadcast+"</i>"+"\n\n"
+                                                        +"<b>Command :</b>\n";
+                                                        
+    
+                                        message_body = "`"+command_kirim+"`"+"\n\n";
+                                        console.log("Send Body 1 message");
+                                        sleep(1000);   
+                                        var footer_message =  "<b>Jumlah Klien :</b>\n"
+                                                +"<i>"+jumlah_client+"</i>"+"\n\n"
+                                                +"<b>Keterangan :</b>\n"
+                                                +"<i>"+keterangan+"</i>"+"\n\n"
+                                                +is_approval
+                                                +is_perintah_generate_otp_or_approval
+                                                +is_generate_otp_or_approval
+                                                +is_tolak;    
+                                        message = header_message+message_body+footer_message;
+                                        bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'});
+                                        console.log("Send Footer 1 message");    
                                     }
+    
+                                //--------------------------- HANDLE SQL BROADCAST MESSAGE -------------------------//    
                                 }else{
-                                    message_body = ""+command_kirim+""+"\n\n";
-                                    sleep(1000);   
-                                    var footer_message =  "Jumlah Klien :\n"
-                                            +""+jumlah_client+""+"\n\n"
-                                            +"Keterangan :\n"
-                                            +""+keterangan+""+"\n\n"
-                                            +is_approval.split("<i>").join('').split("</i>").join('').split("<b>").join('').split("</b>").join('')
-                                            +is_perintah_generate_otp_or_approval.split("<i>").join('').split("</i>").join('').split("<b>").join('').split("</b>").join('')
-                                            +is_generate_otp_or_approval
-                                            +is_tolak;    
-                                    message = header_message+message_body+footer_message;
-                                    //console.log("message sql : "+message);
-                                    bot.sendMessage(msg.chat.id, message);    
-                                }  
+                                    var res_tujuan_broadcast = '';
+                                    if(tujuan_broadcast == 'REGIONAL' || tujuan_broadcast == 'REGIONAL SOME STORES'){
+                                        res_tujuan_broadcast = tujuan_broadcast+'-'+topic_bc;
+                                    }else{
+                                        res_tujuan_broadcast = tujuan_broadcast;
+                                    }
+    
+                                    var header_message  = "Tanggal Broadcast :\n"
+                                        +""+create_date+""+"\n\n"
+                                        +"Nama :\n"
+                                        +""+nama+""+"\n\n"
+                                        +"Jabatan :\n"
+                                        +""+jabatan+""+"\n\n"
+                                        +"Tipe :\n"
+                                        +""+tipe+""+"\n\n"
+                                        +"Penerima :\n"
+                                        +""+res_tujuan_broadcast+""+"\n\n"
+                                        +"Command :\n";
+    
+                                     
                                 
-                                
-                                 
-                                
-                                
-                            }
-                    }catch(exc){
-                        const message = "Tidak ada list pengajuan broadcast untuk di approve oleh anda saat ini. Terimakasih"
-                        bot.sendMessage(msg.chat.id, message); 
-                    }
-                    
-                });
-            }catch(exc){
-                console.log('ERROR');
+                                      
+                                        
+                                    
+                                    var message_body = "";  
+                                    var jumlah_karakter_pesan_untuk_split = 600;      
+                                    if(parseFloat(panjang_command) > jumlah_karakter_pesan_untuk_split){
+                                        (async () => {
+                                          await  bot.sendMessage(msg.chat.id, header_message,{parse_mode: 'HTML'});
+                                          //process.exit();
+                                          console.log("Send Header");
+                                          await sleep(4000); 
+                                        })();    
+                                   
+    
+                                        var total_message_split = parseFloat(panjang_command) / jumlah_karakter_pesan_untuk_split;
+                                        var res_total_message_split = Math.floor(total_message_split);
+    
+                                        var awal = 0;
+                                        var akhir = jumlah_karakter_pesan_untuk_split;
+                                         
+                                        console.log("PANJANG COMMAND KIRIM : "+panjang_command);
+                                        console.log("BAGIAN POTONGAN PESAN : "+parseFloat(res_total_message_split));
+                                        for(var i = 0;i<parseFloat(res_total_message_split);i++){
+    
+                                            if(i == (parseFloat(res_total_message_split)-1)){
+                                                console.log("PANJANGAN POINTER AKHIR MELEBIHI PANJANG COMMAND : "+akhir+" VS "+parseFloat(panjang_command));
+                                                if(parseFloat(res_total_message_split) == 1){
+                                                    message_body = command_kirim; //.substring(akhir,parseFloat(panjang_command))+""+"\n\n";
+                                                }else{
+                                                    message_body = command_kirim.substring(akhir,parseFloat(panjang_command))+""+"\n\n";
+                                                } 
+                                                
+                                                console.log("message_body "+i+" : "+message_body);
+                                                var footer_message =  "Jumlah Klien :\n"
+                                                                        +""+jumlah_client+"\n\n"
+                                                                        +"Keterangan :\n"
+                                                                        +""+keterangan+""+"\n\n"
+                                                                        +is_approval
+                                                                        +is_perintah_generate_otp_or_approval
+                                                                        +is_generate_otp_or_approval
+                                                                        +is_tolak;  
+    
+                                                (async () => {
+                                                  //await bot.sendMessage(msg.chat.id, '-');
+                                                  //process.exit();
+                                                  console.log("Send Body ke : "+(i-1));
+                                                  await bot.sendMessage(msg.chat.id, footer_message,{parse_mode: 'HTML'});  
+                                                  console.log("Send Footer");
+                                                  await sleep(3000); 
+                                                })();
+                                            }else{
+                                                console.log("PANJANG POINTER AKHIR BELUM MELEBIHI PANJANG COMMAND : "+awal+" VS "+parseFloat((awal+jumlah_karakter_pesan_untuk_split)));
+                                                message_body = command_kirim.substring(awal,akhir)+""+"\n\n";
+                                                console.log("message_body "+i+" : "+message_body);
+                                                if(message_body.length > 0){
+                                                     (async () => {
+                                                          //await bot.sendMessage(msg.chat.id, message_body);
+                                                          //process.exit();
+                                                          console.log("Send Body ke : "+i);
+                                                          await sleep(1000);  
+                                                    })();   
+                                                }else{
+                                                    console.log("Tidak mengirimkan pesan");
+                                                }
+                                                
+                                            }
+                                              
+    
+    
+    
+    
+    
+                                            console.log("============================================================");
+    
+    
+                                            if(i == 0){
+                                                awal = jumlah_karakter_pesan_untuk_split;
+                                                akhir = jumlah_karakter_pesan_untuk_split;
+                                            }else{
+                                                awal = akhir;
+                                                akhir = awal+jumlah_karakter_pesan_untuk_split;
+                                            }
+                                        }
+                                    }else{
+                                        message_body = ""+command_kirim+""+"\n\n";
+                                        sleep(1000);   
+                                        var footer_message =  "Jumlah Klien :\n"
+                                                +""+jumlah_client+""+"\n\n"
+                                                +"Keterangan :\n"
+                                                +""+keterangan+""+"\n\n"
+                                                +is_approval.split("<i>").join('').split("</i>").join('').split("<b>").join('').split("</b>").join('')
+                                                +is_perintah_generate_otp_or_approval.split("<i>").join('').split("</i>").join('').split("<b>").join('').split("</b>").join('')
+                                                +is_generate_otp_or_approval
+                                                +is_tolak;    
+                                        message = header_message+message_body+footer_message;
+                                        //console.log("message sql : "+message);
+                                        bot.sendMessage(msg.chat.id, message);    
+                                    }  
+                                    
+                                    
+                                     
+                                    
+                                    
+                                }
+                        }catch(exc){
+                            const message = "Tidak ada list pengajuan broadcast untuk di approve oleh anda saat ini. Terimakasih"
+                            bot.sendMessage(msg.chat.id, message); 
+                        }
+                        
+                    });
+                }catch(exc){
+                    console.log('ERROR');
+                }
             }
+            
             
         });
     }else if(msg.text.toString().includes('REJECT')){
@@ -969,7 +1008,7 @@ bot.on('message', (msg) => {
         const sub_id = pesan.split('_')[2];
         const nama = pesan.split('_')[3];
 
-        const sql_identitas_otorisator = "SELECT NIK,NAMA,JABATAN FROM idm_org_structure WHERE CHAT_ID = '"+msg.chat.id+"'";
+        const sql_identitas_otorisator = "SELECT NIK,NAMA,JABATAN FROM idmcmd2.ws_personil WHERE ChatIDTelegram = '"+msg.chat.id+"'";
         mysqlLib.executeQuery(sql_identitas_otorisator).then((d) => {
                 const RES_NIK_PEMBERI_OTP = d[0].NIK;
                 const RES_NAMA_PEMBERI_OTP = d[0].NAMA;
@@ -991,7 +1030,7 @@ bot.on('message', (msg) => {
                                     const res_KETERANGAN = d[0].KETERANGAN;
                                     const res_PENERIMA = d[0].TIPE;
 
-                                    const sql_info_user_pemohon = "SELECT CHAT_ID FROM idm_org_structure where NIK = '"+res_NIK+"';";
+                                    const sql_info_user_pemohon = "SELECT ChatIDTelegram as CHAT_ID FROM idmcmd2.ws_personil where NIK = '"+res_NIK+"';";
                                     mysqlLib.executeQuery(sql_info_user_pemohon).then((d) => {
                                         const chat_id_pemohon = d[0].CHAT_ID;
                                         var message_ke_pemohon = "<b>Permohonan Broadcast Command/SQL anda : </b>\n"
@@ -1028,7 +1067,7 @@ bot.on('message', (msg) => {
           
 
     }else if(msg.text.toString().includes('list_sudah_eksekusi')){
-        const sql_get_cabang = "SELECT LOCATION FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"';"
+        const sql_get_cabang = "SELECT BRANCH AS LOCATION FROM idmcmd2.ws_personil WHERE ChatIDTelegram = '"+chatId+"';"
         //console.log(sql_get_cabang)
 
         mysqlLib.executeQuery(sql_get_cabang).then((d) => {
@@ -1075,7 +1114,7 @@ bot.on('message', (msg) => {
         });
        
     }else if(msg.text.toString().includes('list_user_aktif')){
-        const sql_get_cabang = "SELECT LOCATION,BRANCH_CODE FROM idm_org_structure WHERE CHAT_ID = '"+chatId+"';"
+        const sql_get_cabang = "SELECT BRANCH AS LOCATION,BranchCoverage AS  BRANCH_CODE FROM idmcmd2.ws_personil WHERE ChatIDTelegram = '"+chatId+"';"
         //console.log(sql_get_cabang)
 
         mysqlLib.executeQuery(sql_get_cabang).then((d) => {
@@ -1415,18 +1454,22 @@ bot.on('message', (msg) => {
                                 //-- cek lokasi nik target dan nik yang me-reset apakah sama --//
                                 //-- jika sama maka lanjutkan proses --//
                                 const cek_lokasi_nik_target = "SELECT LOCATION FROM idm_org_structure WHERE NIK = '"+nik_target+"'";
+                                console.log('cek_lokasi_nik_target : '+cek_lokasi_nik_target);
+
                                 mysqlLib.executeQuery(cek_lokasi_nik_target).then((d) => {
                                     const res_location_nik_target = d[0].LOCATION.trim();
-                                    //console.log(res_location+" VS "+ res_location_nik_target);
+                                    console.log(res_location+" VS "+ res_location_nik_target);
                                     if(res_location == res_location_nik_target)
                                     {
                                         const sql_upd_pass = "UPDATE idm_org_structure SET PASSWORD = NIK WHERE NIK = '"+nik_target+"';"    
                                         mysqlLib.executeQuery(sql_upd_pass).then((d) => {
-                                            bot.sendMessage(msg.chat.id, 'Proses reset password atas NIK : '+nik_target+' Berhasil dilakukan. Terimakasih'); 
+                                            bot.sendMessage(msg.chat.id, 'Proses reset password atas NIK : '+nik_target+' Berhasil dilakukan. Terimakasih');
+                                            console.log('resetpass berhasil') 
                                         });    
                                     //-- jika tidak sama maka cegah proses agar user lain tidak mereset seenaknya --//
                                     }else{
                                         bot.sendMessage(msg.chat.id, 'Anda tidak di perbolehkan mereset password nik : '+nik_target+'. Lokasi anda dengan nik berbeda.'); 
+                                        console.log('Anda tidak di perbolehkan mereset password nik : '+nik_target+'. Lokasi anda dengan nik berbeda.')
                                     }
                                     
                                 });
@@ -1716,10 +1759,8 @@ bot.on("callback_query", function onCallbackQuery(callbackQuery) {
     var nik = callbackQuery.data.split("_")[1];
     var type = callbackQuery.data.split("_")[4];
     var sub_id = callbackQuery.data.split("_")[5];
-    //var chat_id_atasan_for_response = callbackQuery.data.split("_")[5];
-    //console.log("chat_id_atasan_for_response : "+chat_id_atasan_for_response);
-
-    if(type == "DUPLICATE" || type == "REMOTELOGIN" || type == "NOK"){
+    
+    if(type == "DUPLICATE" || type == "REMOTELOGIN" || type == "NOK" || type == "NOMORCO"){
         //-- cek apakah data pemohon ada di table log --//
         //const sql_query_cek_data_pemohon = "CALL GET_CEK_REQUEST_APPROVAL_REMOTE_DUPLICATE_LOGIN('"+nik+"')";
         //- cek apakah sudah di callback oleh user atau belum --//
@@ -1733,8 +1774,7 @@ bot.on("callback_query", function onCallbackQuery(callbackQuery) {
         const sql_query_cek_response = "CALL GET_RESPONSE_APPROVAL_REMOTE_DUPLICATE_LOGIN('"+nik+"','"+res_type+"','"+sub_id+"');";
         console.log(sql_query_cek_response);
         mysqlLib.executeQuery(sql_query_cek_response).then((d) => {
-           console.log("ROW : "+d[0]);
-
+            //console.log("ROW : "+d[0]);
             var rows = d[0];
             if(rows == ''){
                 console.log('HASIL : DATA TIDAK DITEMUKAN');
@@ -1782,7 +1822,6 @@ bot.on("callback_query", function onCallbackQuery(callbackQuery) {
                         var location = callbackQuery.data.split("_")[2];
                         var pass = callbackQuery.data.split("_")[3];
                         var chat_message = "SECURITY_LOGIN/"+location+"/RESPONSE/"+nik+"/";
-
                         var obj_command = {"USERNAME_LOGIN":nik,"PASS":pass,"CHAT_ID_ATASAN":chat_id_atasan,"TYPE":res_type};
                         var res_obj_command = JSON.stringify(obj_command);
                         var to = "IDMCommander";
@@ -1891,7 +1930,7 @@ client.on('message',async function(topic, compressed){
                         const res_TIPE_BC = d[0].TIPE_BC;
                         const res_OTP = d[0].OTP;
 
-                        const sql_info_user_pemohon = "SELECT CHAT_ID FROM idm_org_structure where NIK = '"+res_NIK+"';";
+                        const sql_info_user_pemohon = "SELECT ChatIDTelegram AS CHAT_ID FROM idmcmd2.ws_personil where NIK = '"+res_NIK+"';";
                         //console.log("sql_info_user_pemohon : "+sql_info_user_pemohon)
                         mysqlLib.executeQuery(sql_info_user_pemohon).then((d) => {
                             const chat_id_pemohon = d[0].CHAT_ID;
@@ -1953,17 +1992,19 @@ client.on('message',async function(topic, compressed){
                 }
 
                 const sql_query = "SELECT CREATE_DATE,KDCAB,CONCAT('/CMD','_',KDCAB,'_',SUB_ID,'_',REPLACE(NAMA,' ','')) AS ID,NIK,NAMA,STEP_APPROVAL FROM broadcast_pengajuan_new WHERE SUB_ID = '"+IN_SUB_ID+"' AND KDCAB = '"+IN_CABANG+"' ";
-                //console.log(sql_query)
+                console.log('query list bc : '+sql_query)
                 mysqlLib.executeQuery(sql_query).then((d) => {
                     const res_ID = d[0].ID;
                     const res_NIK = d[0].NIK;
                     const res_NAMA = d[0].NAMA;
                     const res_step_approval = d[0].STEP_APPROVAL;
-                    const res_location = d[0].KDCAB;
+                    const res_location = d[0].KDCAB.split('RE0').join('REG');
+                    
 
 
-                    const sql_info_next_step_approval = "SELECT CHAT_ID,NAMA FROM idm_org_structure where JABATAN = '"+res_step_approval+"' AND LOCATION = '"+res_location+"';";
-                    //console.log(sql_info_next_step_approval)
+
+                    const sql_info_next_step_approval = "SELECT ChatIDTelegram as CHAT_ID,NAMA FROM idmcmd2.ws_personil where JABATAN = '"+res_step_approval+"' AND Branch = '"+res_location+"';";
+                    console.log('info step approval : '+sql_info_next_step_approval)
                     mysqlLib.executeQuery(sql_info_next_step_approval).then((d) => {
                         //console.log("HASIL : "+d.affectedRows)
                         for(var i = 0;i<d.length;i++){
@@ -2215,6 +2256,124 @@ client.on('message',async function(topic, compressed){
                                             "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
                                             "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
                                             "<b><i>Software Remote</i></b>\r\n<i>"+via+"</i>\r\n\r\n"+
+                                            "<b><i>Kesimpulan</i></b>\r\n<i>"+kesimpulan+"</i>\r\n\r\n\r\n"+
+                                            
+                                            "<b><i>*) Pesan ini disampaikan oleh Backend IDMCommand</i></b>";
+
+                                            bot.sendMessage("532860640", message_send_to_administrator,{parse_mode: 'HTML'});
+                                            console.log("SEND INFO SUKSES KE CHATID : 532860640");
+
+                                        }
+
+                    }else if(type == "NOMORCO"){
+                        message_send = "<b>.: WARNING :.</b>\r\n\r\n"+
+                                        "<b>Terdapat potensi akses toko tanpa input NOMOR_CO : </b>\r\n\r\n"+
+                                        "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
+                                        "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
+                                        "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
+                                        "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
+                                        "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
+                                        "<b><i>Keterangan</i></b>\r\n<i>"+via+"</i>\r\n\r\n"+
+                                        "<b>Apakah anda mengijinkan akses tersebut : </b>\r\n\r\n\r\n"+
+                                        
+                                        "<b><i>*) Mohon menghimbau kepada semua pengguna idmcommand untuk tidak share account serta menjaga privasi password account idmcommand masing-masing</i></b>";
+
+                                        var kesimpulan = "";
+                                        if(chat_id_atasan.includes(",")){
+                                            var parse_chat_id_atasan = chat_id_atasan.split(",");
+                                            for(var i = 0;i<parse_chat_id_atasan.length;i++){
+                                                var res_nama_atasan = parse_chat_id_atasan[i].split("|")[1];
+                                                var res_chat_id_atasan = parse_chat_id_atasan[i].split("|")[2];
+                                                /*
+                                                bot.sendMessage(res_chat_id_atasan, message_send,{parse_mode: 'HTML'});      
+                                               
+                                                */
+                                                //var data_call_izin = {"CONTENT":"IZINKAN","NIK":nik,"LOCATION":location,"PASSWORD":pass,"TYPE":type};
+                                                //var data_call_tolak = {"CONTENT":"IZINKAN","NIK":nik,"LOCATION":location,"PASSWORD":pass,"TYPE":type};
+                                                bot.sendMessage(res_chat_id_atasan, message_send, {parse_mode: 'HTML',
+                                                    reply_markup: {
+                                                       inline_keyboard: [
+                                                            [
+                                                                {
+                                                                    // //command,hasil,kode_cabang_user,chat_message,nik_user
+                                                                    text: "IZINKAN",
+                                                                    callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
+                                                                },
+                                                                {
+                                                                    text: "TOLAK",
+                                                                    callback_data:  'TOLAK_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
+                                                                }
+                                                            ],
+
+                                                        ]
+                                                    }
+                                                });
+
+                                                console.log("SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan);
+                                                kesimpulan = kesimpulan+""+"SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan+"\r\n";
+                                            }
+
+                                            var  message_send_to_administrator = "<b>.: MONITORING BACKEND :.</b>\r\n\r\n"+
+                                            "<b><i>Tanggal</i></b>\r\n<i>"+IN_TANGGAL_JAM+"</i>\r\n\r\n"+
+                                            "<b><i>Task</i></b>\r\n<i>"+IN_TASK+"</i>\r\n\r\n"+
+                                            "<b><i>Topic</i></b>\r\n<i>"+topic+"</i>\r\n\r\n"+
+                                            "<b><i>Pesan</i></b>\r\n<i>REMOTE LOGIN</i>\r\n\r\n\r\n"+
+                                            "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
+                                            "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
+                                            "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
+                                            "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
+                                            "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
+                                            "<b><i>Keterangan</i></b>\r\n<i>"+via+"</i>\r\n\r\n"+
+                                            "<b><i>Kesimpulan</i></b>\r\n<i>"+kesimpulan+"</i>\r\n\r\n\r\n"+
+                                            
+                                            "<b><i>*) Pesan ini disampaikan oleh Backend IDMCommand</i></b>";
+
+                                            bot.sendMessage("532860640", message_send_to_administrator,{parse_mode: 'HTML'});
+                                            console.log("SEND INFO SUKSES KE CHATID : 532860640");
+                                            
+                                        }else{
+                                            
+                                            var res_nama_atasan = chat_id_atasan.split("|")[1];
+                                            var res_chat_id_atasan = chat_id_atasan.split("|")[2];
+
+                                            //var data_call_izin = {"CONTENT":"IZINKAN","NIK":nik,"LOCATION":location,"PASSWORD":pass,"TYPE":type};
+                                            //var data_call_tolak = {"CONTENT":"IZINKAN","NIK":nik,"LOCATION":location,"PASSWORD":pass,"TYPE":type};
+                                                
+
+                                            bot.sendMessage(res_chat_id_atasan, message_send, {parse_mode: 'HTML',
+                                                reply_markup: {
+                                                   inline_keyboard: [
+                                                        [
+                                                            {
+                                                                // //command,hasil,kode_cabang_user,chat_message,nik_user
+                                                                text: "IZINKAN",
+                                                                callback_data: 'IZINKAN_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
+                                                            },
+                                                            {
+                                                                text: "TOLAK",
+                                                                callback_data: 'TOLAK_'+nik+"_"+location+"_"+pass+"_"+type+"_"+IN_SUB_ID
+                                                            }
+                                                        ],
+
+                                                    ]
+                                                }
+                                            });
+                                            
+                                            console.log("SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan);
+                                            var kesimpulan = kesimpulan+""+"SEND INFO SUKSES KE CHATID : "+res_chat_id_atasan+" Nama : "+res_nama_atasan+"\r\n";
+     
+
+                                            var  message_send_to_administrator = "<b>.: MONITORING BACKEND :.</b>\r\n\r\n"+
+                                            "<b><i>Tanggal</i></b>\r\n<i>"+IN_TANGGAL_JAM+"</i>\r\n\r\n"+
+                                            "<b><i>Task</i></b>\r\n<i>"+IN_TASK+"</i>\r\n\r\n"+
+                                            "<b><i>Topic</i></b>\r\n<i>"+topic+"</i>\r\n\r\n"+
+                                            "<b><i>Pesan</i></b>\r\n<i>REMOTE LOGIN</i>\r\n\r\n\r\n"+
+                                            "<b><i>Username</i></b>\r\n<i>"+nik+"</i>\r\n\r\n"+
+                                            "<b><i>Nama User</i></b>\r\n<i>"+nama+"</i>\r\n\r\n"+
+                                            "<b><i>Jabatan</i></b>\r\n<i>"+jabatan+"</i>\r\n\r\n"+
+                                            "<b><i>Bagian</i></b>\r\n<i>"+bagian+"</i>\r\n\r\n"+
+                                            "<b><i>Login dari IP</i></b>\r\n<i>"+login_dari_ip+"</i>\r\n\r\n"+
+                                            "<b><i>Nomor CO</i></b>\r\n<i>"+via+"</i>\r\n\r\n"+
                                             "<b><i>Kesimpulan</i></b>\r\n<i>"+kesimpulan+"</i>\r\n\r\n\r\n"+
                                             
                                             "<b><i>*) Pesan ini disampaikan oleh Backend IDMCommand</i></b>";
