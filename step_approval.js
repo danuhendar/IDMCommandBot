@@ -108,11 +108,20 @@ bot.on('message', (msg) => {
                             } 
                             
                             //console.log(data)
-                            bot.sendMessage(msg.chat.id, "Berikut daftar broadcast command yang diajukan : \n"+data);
+                            try{
+                                bot.sendMessage(msg.chat.id, "Berikut daftar broadcast command yang diajukan : \n"+data);
+                            }catch(Ex){
+                                console.error('Error : '+Ex.Message)
+                            }
+                            
                           }); 
                          
                       }else{
-                          bot.sendMessage(msg.chat.id, "Tidak ada daftar broadcast command yang diajukan oleh tim anda");
+                            try{
+                                bot.sendMessage(msg.chat.id, "Tidak ada daftar broadcast command yang diajukan oleh tim anda");
+                            }catch(Ex){
+                                console.error('Error : '+Ex.Message) 
+                            }
                       }
 
                 });
@@ -156,11 +165,21 @@ bot.on('message', (msg) => {
                             } 
                             
                             //console.log(data)
-                            bot.sendMessage(msg.chat.id, "Berikut daftar broadcast command yang diajukan : \n"+data);
+                            try{
+                                bot.sendMessage(msg.chat.id, "Berikut daftar broadcast command yang diajukan : \n"+data);    
+                            }catch(Ex){
+                                console.error('Error : '+Ex.Message) 
+                            }
+                            
                           }); 
                          
                       }else{
-                          bot.sendMessage(msg.chat.id, "Tidak ada daftar broadcast command yang diajukan oleh tim anda");
+                            try{
+                                bot.sendMessage(msg.chat.id, "Tidak ada daftar broadcast command yang diajukan oleh tim anda");
+                            }catch(Ex){
+                                console.error('Error : '+Ex.Message) 
+                            }
+                          
                       }
 
                 });
@@ -239,15 +258,22 @@ bot.on('message', (msg) => {
                                             console.log("OTORISASI SUDAH SAMA : "+res_otorisasi+" - "+res_jabatan);
                                             //const message_send = "<b>Mohon maaf anda tidak bisa melakukan generate OTP atas pengajuan tersebut. Jumlah klien melebihi batas jangkauan Supervisor untuk melakukan Broadcast Command</b>"    
                                             //bot.sendMessage(chatId, message_send,{parse_mode: 'HTML'});
-                                            bot.sendMessage(msg.chat.id, "Mohon tunggu, idmcommand akan memberikan OTP");
-                                        
-                                            pub_Command(chatId,res_hasil,res_nik,res_nama,kdcab,sub_id,nama);
+                                            try{
+                                                bot.sendMessage(msg.chat.id, "Mohon tunggu, idmcommand akan memberikan OTP");
+                                                pub_Command(chatId,res_hasil,res_nik,res_nama,kdcab,sub_id,nama);
+                                            }catch(Ex){
+                                                console.error('Error : '+Ex.Message) 
+                                            }
                                             //console.log("Data ada");
                                         }else{
                                             console.log("OTORISASI BELUM SAMA : "+res_otorisasi+" - "+res_jabatan);
-                                            bot.sendMessage(msg.chat.id, "Mohon tunggu, OTP akan idmcommand akan memberikan OTP");
-                                            //console.log("Data tidak ada");
-                                            pub_Command(chatId,res_hasil,res_nik,res_nama,kdcab,sub_id,nama);
+                                            try{
+                                                bot.sendMessage(msg.chat.id, "Mohon tunggu, OTP akan idmcommand akan memberikan OTP");
+                                                pub_Command(chatId,res_hasil,res_nik,res_nama,kdcab,sub_id,nama);
+                                            }catch(Ex){
+                                                console.error('Error : '+Ex.Message) 
+                                            }
+                                            
 
                                         }  
 
@@ -272,8 +298,13 @@ bot.on('message', (msg) => {
                                                 +""+res_nama_pemberi_otp+""+"\n\n\n"
                                                 +"Lihat daftar pengajuan broadcast"+"\n"
                                                 +"/start"
-                                               ;                
-                            bot.sendMessage(chatId, message_send);
+                                               ;
+                            try{
+                                bot.sendMessage(chatId, message_send);
+                            }catch(Ex){
+                                console.error('Error : '+Ex.Message) 
+                            }                                
+                            
                         });
                   }
                   
@@ -284,7 +315,12 @@ bot.on('message', (msg) => {
             
         }catch(exc){
             console.log("ERROR : "+exc.tostring())
-            bot.sendMessage(msg.chat.id, "Mohon maaf terjadi gangguan, silahkan kontak administrator idmcommand !!!");   
+            try{
+                bot.sendMessage(msg.chat.id, "Mohon maaf terjadi gangguan, silahkan kontak administrator idmcommand !!!");   
+            }catch(Ex){
+                console.error('Error : '+Ex.Message) 
+            }
+            
         }
 
         
@@ -362,7 +398,12 @@ bot.on('message', (msg) => {
                                               
                                             }else{
                                                 //-- kirim pesan kepada user yang sedang melakukan approval --//
-                                                bot.sendMessage(msg.chat.id, "Mohon tunggu, Proses approval sedang diproses");
+                                                try{
+                                                    bot.sendMessage(msg.chat.id, "Mohon tunggu, Proses approval sedang diproses");    
+                                                }catch(Ex){
+                                                    console.error('Error : '+Ex.Message) 
+                                                }
+                                                
                                                 var next_step_approval = "";
                                                 if(res_step_approval == "SUPERVISOR" && kdcab.substring(0,1) == 'G'){
                                                     next_step_approval = "MANAGER";    
@@ -423,7 +464,11 @@ bot.on('message', (msg) => {
                                                                                         +"<b>ID :</b>\n"
                                                                                         +"<i>"+id+"</i>"+"\n\n\n"
                                                                                        ;
-                                                                    bot.sendMessage(chat_id_next_step_approval, message_send,{parse_mode: 'HTML'});
+                                                                    try{
+                                                                        bot.sendMessage(chat_id_next_step_approval, message_send,{parse_mode: 'HTML'});
+                                                                    }catch(Ex){
+                                                                        console.error('Error : '+Ex.Message) 
+                                                                    }
                                                                 }
                                                             });
 
@@ -447,13 +492,23 @@ bot.on('message', (msg) => {
                                                                                             +"<b>ID :</b>\n"
                                                                                             +"<i>"+id.replace("/CMD_","")+"</i>"+"\n\n\n"
                                                                                            ;
-                                                                bot.sendMessage(chat_id_pemohon, message_send_ke_pemohon,{parse_mode: 'HTML'});
+                                                                try{
+                                                                    bot.sendMessage(chat_id_pemohon, message_send_ke_pemohon,{parse_mode: 'HTML'});
+                                                                }catch(Ex){
+                                                                    console.error('Error : '+Ex.Message) 
+                                                                }                        
+                                                                
                                                             });
 
                                                         });
 
                                                     }else{
-                                                        bot.sendMessage(msg.chat.id, "Approval "+step_approval.toLowerCase()+" gagal. Silahkan hubungi administrator idmcommand untuk proses pengecekan. Terimakasih");
+                                                        try{
+                                                            bot.sendMessage(msg.chat.id, "Approval "+step_approval.toLowerCase()+" gagal. Silahkan hubungi administrator idmcommand untuk proses pengecekan. Terimakasih");
+                                                        }catch(Ex){
+                                                            console.error('Error : '+Ex.Message) 
+                                                        }  
+                                                        
                                                     }
                                                 });
                                                 //console.log("Data ada");
@@ -479,8 +534,13 @@ bot.on('message', (msg) => {
                                                     +"<i>"+res_nama_pemberi_otp+"</i>"+"\n\n\n"
                                                     +"Lihat daftar pengajuan broadcast"+"\n"
                                                     +"/start"
-                                                   ;                
-                                bot.sendMessage(chatId, message_send,{parse_mode: 'HTML'});
+                                                   ;
+                                try{
+                                    bot.sendMessage(chatId, message_send,{parse_mode: 'HTML'});
+                                }catch(Ex){
+                                    console.error('Error : '+Ex.Message) 
+                                }                                
+                                
                             });
                       }
                       
@@ -506,14 +566,29 @@ bot.on('message', (msg) => {
             mysqlLib.executeQuery(sql_query).then((d) => {
                   const res_hasil = d[0].HASIL;
                   if(res_hasil == '1'){
-                     //-- pengecekan list pengajuan broadcast --//       
-                     bot.sendMessage(msg.chat.id, 'Anda sudah terdaftar pada sistem IDMCommandBot');         
+                     //-- pengecekan list pengajuan broadcast --//     
+                    try{
+                        bot.sendMessage(msg.chat.id, 'Anda sudah terdaftar pada sistem IDMCommandBot');         
+                    }catch(Ex){
+                        console.error('Error : '+Ex.Message) 
+                    }
+                     
                  }else{
-                     bot.sendMessage(msg.chat.id, "Masukan NIK anda contoh : #2013001002");
+                    try{
+                        bot.sendMessage(msg.chat.id, "Masukan NIK anda contoh : #2013001002");
+                    }catch(Ex){
+                        console.error('Error : '+Ex.Message) 
+                    }
+                    
                  }
             });
         }catch(exc){
-           bot.sendMessage(msg.chat.id, "Mohon maaf terjadi kesalahan, "+exc.Stack);
+            try{
+                bot.sendMessage(msg.chat.id, "Mohon maaf terjadi kesalahan, "+exc.Stack);
+            }catch(Ex){
+                console.error('Error : '+Ex.Message) 
+            }
+           
         }
         
        
@@ -536,7 +611,12 @@ bot.on('message', (msg) => {
                                 //console.log(sql_query)
 
                                 mysqlLib.executeQuery(sql_query).then((d) => {
-                                    bot.sendMessage(msg.chat.id, 'Selamat, Anda telah terdaftar pada idmcommandbot'); 
+                                    try{
+                                        bot.sendMessage(msg.chat.id, 'Selamat, Anda telah terdaftar pada idmcommandbot'); 
+                                    }catch(Ex){
+                                        console.error('Error : '+Ex.Message) 
+                                    }
+                                    
                                 });   
 
                                 //-- pengecekan list pengajuan broadcast --//
@@ -564,24 +644,46 @@ bot.on('message', (msg) => {
                                             } 
                                             // bot.sendMessage(msg.chat.id, list_bc_command);  
                                             //console.log(data)
-                                            bot.sendMessage(msg.chat.id, "Berikut daftar broadcast command yang diajukan : \n"+data);
+                                            try{
+                                                bot.sendMessage(msg.chat.id, "Berikut daftar broadcast command yang diajukan : \n"+data);
+                                            }catch(Ex){
+                                                console.error('Error : '+Ex.Message) 
+                                            }
+                                            
                                         }); 
                                        
                                     }else{
+                                        try{
                                             bot.sendMessage(msg.chat.id, "Tidak daftar broadcast command yang diajukan oleh tim anda");
+                                        }catch(Ex){
+                                            console.error('Error : '+Ex.Message) 
+                                        }
                                     }
                                 }); 
                         }catch(exc){
-                               bot.sendMessage(msg.chat.id, "Mohon maaf terjadi gangguan saat pendaftaran user, silahkan kontak administrator !!!");    
+                            try{
+                                bot.sendMessage(msg.chat.id, "Mohon maaf terjadi gangguan saat pendaftaran user, silahkan kontak administrator !!!");    
+                            }catch(Ex){
+                                console.error('Error : '+Ex.Message) 
+                            }
                         }
                        
                     }else{
-                        bot.sendMessage(msg.chat.id, "Mohon maaf anda tidak berhak mengakses menu idmcommandbot !!!");    
+                        try{
+                            bot.sendMessage(msg.chat.id, "Mohon maaf anda tidak berhak mengakses menu idmcommandbot !!!");    
+                        }catch(Ex){
+                            console.error('Error : '+Ex.Message) 
+                        }
+                        
                     }
                 });   
 
            }else{
-                bot.sendMessage(msg.chat.id, "NIK : "+nik_user+" tidak ada dalam sistem idmcommand, mohon cek kembali inputan nik.");
+                try{
+                    bot.sendMessage(msg.chat.id, "NIK : "+nik_user+" tidak ada dalam sistem idmcommand, mohon cek kembali inputan nik.");
+                }catch(Ex){
+                    console.error('Error : '+Ex.Message) 
+                }
            }
 
 
@@ -600,8 +702,13 @@ bot.on('message', (msg) => {
             const res_nama = d[0].NAMA;
             const res_jabatan = d[0].JABATAN;
             if(res_jabatan.includes('SUPPORT')){
-                const message = "Mohon maaf anda tidak berhak untuk mengakses informasi broadcast tersebut!"
-                bot.sendMessage(msg.chat.id, message); 
+                try{
+                    const message = "Mohon maaf anda tidak berhak untuk mengakses informasi broadcast tersebut!"
+                    bot.sendMessage(msg.chat.id, message); 
+                }catch(Ex){
+                    console.error('Error : '+Ex.Message) 
+                }
+                
             }else{
                 try{
                     //--munculkan detail command yang akan di broadcast --//
@@ -821,7 +928,12 @@ bot.on('message', (msg) => {
                                                         +is_generate_otp_or_approval
                                                         +is_tolak;    
                                                 message = header_message+message_body+footer_message;
-                                                bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'});    
+                                                try{
+                                                    bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'});    
+                                                }catch(Ex){
+                                                    console.error('Error : '+Ex.Message) 
+                                                }
+                                                
     
                                             }
                                             console.log("============================================================");
@@ -858,8 +970,13 @@ bot.on('message', (msg) => {
                                                 +is_generate_otp_or_approval
                                                 +is_tolak;    
                                         message = header_message+message_body+footer_message;
-                                        bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'});
-                                        console.log("Send Footer 1 message");    
+                                        try{
+                                            bot.sendMessage(msg.chat.id, message, {parse_mode: 'HTML'});
+                                        }catch(Ex){
+                                            console.error('Error : '+Ex.Message) 
+                                        }
+                                        console.log("Send Footer 1 message");
+                                            
                                     }
     
                                 //--------------------------- HANDLE SQL BROADCAST MESSAGE -------------------------//    
@@ -981,7 +1098,12 @@ bot.on('message', (msg) => {
                                                 +is_tolak;    
                                         message = header_message+message_body+footer_message;
                                         //console.log("message sql : "+message);
-                                        bot.sendMessage(msg.chat.id, message);    
+                                        try{
+                                            bot.sendMessage(msg.chat.id, message);    
+                                        }catch(Ex){
+                                            console.error('Error : '+Ex.Message) 
+                                        }
+                                        
                                     }  
                                     
                                     
@@ -2016,9 +2138,14 @@ client.on('message',async function(topic, compressed){
                                                 +"<i>"+res_NAMA+"</i>"+"\n\n"
                                                 +"<b>ID :</b>\n"
                                                 +"<i>"+res_ID+"</i>"+"\n\n\n"
-                                               ;               
-                                bot.sendMessage(chat_id_next_step_approval, message_send,{parse_mode: 'HTML'});
-                                console.log("SEND NOTIF KE LEVEL SELANJUTNYA OK : "+nama_next_step_approval);
+                                               ;    
+                                try{
+                                    bot.sendMessage(chat_id_next_step_approval, message_send,{parse_mode: 'HTML'});
+                                    console.log("SEND NOTIF KE LEVEL SELANJUTNYA OK : "+nama_next_step_approval);
+                                }catch(Ex){
+                                    //console.error(Ex.Message)
+                                    console.log("SEND NOTIF KE LEVEL SELANJUTNYA GAGAL : "+nama_next_step_approval+" CHAT ID = "+chat_id_next_step_approval);
+                                }
                             }else{
                                 console.log("SEND NOTIF KE LEVEL SELANJUTNYA GAGAL : "+nama_next_step_approval+" CHAT ID = "+chat_id_next_step_approval);
                             }
@@ -2553,6 +2680,7 @@ client.on('message',async function(topic, compressed){
             bot.sendMessage(chat_id_next_step_approval, message_send_ke_pemohon,{parse_mode: 'HTML'});
             */
     }catch(exc){
+        console.log(exc.toString())
         console.log("ERROR TERIMA MESAGE : "+exc+" topic : "+topic+" pesan : "+compressed)  
     }
 });
