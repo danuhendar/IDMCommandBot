@@ -43,7 +43,7 @@ const token = '5408760134:AAEC_nJp9KClpr7ewlQSwrqBPh9J2HVrkjc';
 const bot = new TelegramBot(token, {polling: true});
 bot.onText(/\/start/, (msg) => {
     try{    
-            const sql_query = "SELECT EXISTS(SELECT LOCATION FROM idmcmd2.ws_personil WHERE ChatIDTelegram = '"+msg.chat.id+"') AS HASIL;";
+            const sql_query = "SELECT EXISTS(SELECT BRANCH AS LOCATION FROM idmcmd2.ws_personil WHERE ChatIDTelegram = '"+msg.chat.id+"') AS HASIL;";
             //console.log(sql_query)
             mysqlLib.executeQuery(sql_query).then((d) => {
                   const res_hasil = d[0].HASIL;
@@ -335,7 +335,7 @@ bot.on('message', (msg) => {
                                                         "                IF(a.PROSENTASE_CLIENT>(SELECT JUMLAH_KLIEN FROM ws_pattern_command WHERE JABATAN = 'SUPERVISOR' AND TIPE_BC = a.TIPE_BC AND LOKASI = 'REGIONAL') AND a.PROSENTASE_CLIENT<=(SELECT JUMLAH_KLIEN FROM ws_pattern_command WHERE JABATAN = 'DEPUTY MANAGER' AND TIPE_BC = a.TIPE_BC AND LOKASI = 'REGIONAL'),'DEPUTY MANAGER','MANAGER') "+    
                                                         "            ) "+
                                                         "        ) "+
-                                                        ") AS OTORISASI, "+
+                                                        ") AS OTORISASI "+
                                                         " FROM broadcast_pengajuan_new a  "+
                                                         " WHERE a.IS_APPROVAL = '0' "+
                                                         " AND a.SUB_ID =  '"+sub_id+"' "+
@@ -1998,7 +1998,7 @@ client.on('message',async function(topic, compressed){
                     const res_NIK = d[0].NIK;
                     const res_NAMA = d[0].NAMA;
                     const res_step_approval = d[0].STEP_APPROVAL;
-                    const res_location = d[0].KDCAB.split('RE0').join('REG');
+                    const res_location = d[0].KDCAB.split('REG').join('RE0');
                     
 
 
