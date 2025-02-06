@@ -1,8 +1,8 @@
 {
-	"HOST_DB":"172.24.16.131",
-	"USER_DB":"root",
-	"PASS_DB":"edpho@Idm2020",
-	"DATABASE":"idmcmd",
+	"HOST_DB":"172.24.52.30",
+	"USER_DB":"idmcmd",
+	"PASS_DB":"idmcmd@Idm2024",
+	"DATABASE":"idmcmd2",
 	"PORT_DB":6446,
 	"HOST_DB_DRC":"172.24.16.131",
 	"USER_DB_DRC":"root",

@@ -8,10 +8,10 @@ fs.readFile('appconfig.json', (err, data) => {
 });
 
 const mysqlConfig = {
-  host: '172.24.16.131',
-  user: 'root',
-  password: 'edpho@Idm2020',
-  database: 'idmcmd',
+  host: '172.24.52.30',
+  user: 'idmcmd',
+  password: 'idmcmd@Idm2024',
+  database: 'idmcmd2',
   port: 6446
 }
 
